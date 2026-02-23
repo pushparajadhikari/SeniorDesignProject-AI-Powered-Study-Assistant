@@ -4,35 +4,86 @@ import androidx.compose.runtime.Composable
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import com.example.aistudyassistant.screens.LoginScreen
-import com.example.aistudyassistant.screens.DashboardScreen
-
-
+import com.example.aistudyassistant.screens.*
 
 @Composable
 fun AppNavigation() {
-    // This controller actually handles moving between screens
+
     val navController = rememberNavController()
 
-    // NavHost acts as the container holding your screens
-    NavHost(navController = navController, startDestination = "login") {
+    NavHost(
+        navController = navController,
+        startDestination = "onboarding"
+    ) {
 
-        // Screen 1: Login
-        composable("login") {
-            LoginScreen(
-                onLoginSuccess = {
-                    // When login is successful, go to dashboard
-                    navController.navigate("dashboard") {
-                        // This prevents the user from hitting the "back" button to return to login
-                        popUpTo("login") { inclusive = true }
+        // ---------------- Onboarding ----------------
+        composable("onboarding") {
+            OnboardingScreen(
+                onFinish = {
+                    navController.navigate("auth") {
+                        popUpTo("onboarding") { inclusive = true }
                     }
                 }
             )
         }
 
-        // Screen 2: Dashboard
+        // ---------------- Auth Choice ----------------
+        composable("auth") {
+            AuthChoiceScreen(
+                onLogin = { navController.navigate("login") },
+                onSignup = { navController.navigate("signup") }
+            )
+        }
+
+        // ---------------- Login ----------------
+        composable("login") {
+            LoginScreen(
+                onLoginSuccess = {
+                    navController.navigate("dashboard") {
+                        popUpTo("auth") { inclusive = true }
+                    }
+                },
+                onBack = {
+                    navController.popBackStack()
+                }
+            )
+        }
+
+        // ---------------- Signup ----------------
+        composable("signup") {
+            SignupScreen(
+                onSignupSuccess = {
+                    navController.navigate("dashboard") {
+                        popUpTo("auth") { inclusive = true }
+                    }
+                },
+                onBack = {
+                    navController.popBackStack()
+                }
+            )
+        }
+
+        // ---------------- Dashboard ----------------
         composable("dashboard") {
-            DashboardScreen()
+            DashboardScreen(
+                onUploadClick = {
+                    navController.navigate("upload")
+                },
+                onLogout = {
+                    navController.navigate("auth") {
+                        popUpTo("dashboard") { inclusive = true }
+                    }
+                }
+            )
+        }
+
+        // ---------------- Upload PDF ----------------
+        composable("upload") {
+            UploadPdfScreen(
+                onBack = {
+                    navController.popBackStack()
+                }
+            )
         }
     }
 }
