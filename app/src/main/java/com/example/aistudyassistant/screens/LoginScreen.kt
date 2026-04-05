@@ -8,7 +8,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
@@ -28,16 +27,14 @@ import com.example.aistudyassistant.auth.UserManager
 import com.example.aistudyassistant.ui.theme.*
 
 @Composable
-fun SignupScreen(
-    onSignupSuccess: () -> Unit,
-    onBack:          () -> Unit
+fun LoginScreen(
+    onLoginSuccess: () -> Unit,
+    onBack:         () -> Unit
 ) {
     val context = LocalContext.current
 
-    var name            by remember { mutableStateOf("") }
     var email           by remember { mutableStateOf("") }
     var password        by remember { mutableStateOf("") }
-    var confirmPassword by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
     var errorMessage    by remember { mutableStateOf("") }
     var isLoading       by remember { mutableStateOf(false) }
@@ -46,8 +43,8 @@ fun SignupScreen(
 
         Box(
             modifier = Modifier
-                .fillMaxWidth().height(220.dp)
-                .background(Brush.verticalGradient(listOf(GradientMid, GradientEnd)))
+                .fillMaxWidth().height(240.dp)
+                .background(Brush.verticalGradient(listOf(GradientStart, GradientMid)))
         )
 
         Column(modifier = Modifier.fillMaxSize()) {
@@ -61,15 +58,15 @@ fun SignupScreen(
                 }
             }
 
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(16.dp))
 
             Column(modifier = Modifier.padding(horizontal = 28.dp)) {
-                Text("Create Account ✨", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                Text("Welcome back 👋", fontSize = 30.sp, fontWeight = FontWeight.Bold, color = Color.White)
                 Spacer(Modifier.height(4.dp))
-                Text("Start studying smarter today", fontSize = 14.sp, color = Color.White.copy(alpha = 0.8f))
+                Text("Sign in to continue studying", fontSize = 15.sp, color = Color.White.copy(alpha = 0.8f))
             }
 
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(32.dp))
 
             Card(
                 shape    = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
@@ -78,47 +75,30 @@ fun SignupScreen(
             ) {
                 Column(modifier = Modifier.padding(28.dp)) {
 
-                    Spacer(Modifier.height(4.dp))
+                    Spacer(Modifier.height(8.dp))
 
-                    // Full Name
-                    Text("Full Name", fontSize = 13.sp, fontWeight = FontWeight.Medium, color = TextSecondary)
-                    Spacer(Modifier.height(6.dp))
-                    OutlinedTextField(
-                        value         = name,
-                        onValueChange = { name = it; errorMessage = "" },
-                        placeholder   = { Text("Your name") },
-                        leadingIcon   = { Icon(Icons.Default.Person, null, tint = BrandViolet) },
-                        shape         = RoundedCornerShape(12.dp),
-                        singleLine    = true,
-                        modifier      = Modifier.fillMaxWidth()
-                    )
-
-                    Spacer(Modifier.height(12.dp))
-
-                    // Email
                     Text("Email", fontSize = 13.sp, fontWeight = FontWeight.Medium, color = TextSecondary)
                     Spacer(Modifier.height(6.dp))
                     OutlinedTextField(
                         value           = email,
                         onValueChange   = { email = it; errorMessage = "" },
                         placeholder     = { Text("you@university.edu") },
-                        leadingIcon     = { Icon(Icons.Default.Email, null, tint = BrandViolet) },
+                        leadingIcon     = { Icon(Icons.Default.Email, null, tint = BrandTeal) },
                         shape           = RoundedCornerShape(12.dp),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
                         singleLine      = true,
                         modifier        = Modifier.fillMaxWidth()
                     )
 
-                    Spacer(Modifier.height(12.dp))
+                    Spacer(Modifier.height(16.dp))
 
-                    // Password
                     Text("Password", fontSize = 13.sp, fontWeight = FontWeight.Medium, color = TextSecondary)
                     Spacer(Modifier.height(6.dp))
                     OutlinedTextField(
                         value                = password,
                         onValueChange        = { password = it; errorMessage = "" },
-                        placeholder          = { Text("Min. 8 characters") },
-                        leadingIcon          = { Icon(Icons.Default.Lock, null, tint = BrandViolet) },
+                        placeholder          = { Text("••••••••") },
+                        leadingIcon          = { Icon(Icons.Default.Lock, null, tint = BrandTeal) },
                         trailingIcon         = {
                             IconButton(onClick = { passwordVisible = !passwordVisible }) {
                                 Icon(
@@ -133,23 +113,6 @@ fun SignupScreen(
                         modifier             = Modifier.fillMaxWidth()
                     )
 
-                    Spacer(Modifier.height(12.dp))
-
-                    // Confirm Password
-                    Text("Confirm Password", fontSize = 13.sp, fontWeight = FontWeight.Medium, color = TextSecondary)
-                    Spacer(Modifier.height(6.dp))
-                    OutlinedTextField(
-                        value                = confirmPassword,
-                        onValueChange        = { confirmPassword = it; errorMessage = "" },
-                        placeholder          = { Text("Repeat password") },
-                        leadingIcon          = { Icon(Icons.Default.Lock, null, tint = BrandViolet) },
-                        visualTransformation = PasswordVisualTransformation(),
-                        shape                = RoundedCornerShape(12.dp),
-                        singleLine           = true,
-                        modifier             = Modifier.fillMaxWidth()
-                    )
-
-                    // Error
                     if (errorMessage.isNotEmpty()) {
                         Spacer(Modifier.height(8.dp))
                         Card(
@@ -165,36 +128,39 @@ fun SignupScreen(
                         }
                     }
 
-                    Spacer(Modifier.height(24.dp))
+                    Spacer(Modifier.height(28.dp))
 
-                    // Local validation first, then register
                     Button(
                         onClick = {
-                            errorMessage = when {
-                                password != confirmPassword -> "Passwords do not match"
-                                else -> ""
-                            }
-                            if (errorMessage.isEmpty()) {
-                                isLoading = true
-                                val error = UserManager.register(context, name.trim(), email.trim(), password)
-                                if (error == null) {
-                                    onSignupSuccess()
-                                } else {
-                                    errorMessage = error
-                                    isLoading    = false
-                                }
+                            isLoading    = true
+                            errorMessage = ""
+                            val error = UserManager.login(context, email.trim(), password)
+                            if (error == null) {
+                                onLoginSuccess()
+                            } else {
+                                errorMessage = error
+                                isLoading    = false
                             }
                         },
-                        enabled  = !isLoading,
+                        enabled  = !isLoading && email.isNotBlank() && password.isNotBlank(),
                         shape    = RoundedCornerShape(14.dp),
-                        colors   = ButtonDefaults.buttonColors(containerColor = BrandViolet),
+                        colors   = ButtonDefaults.buttonColors(containerColor = BrandTeal),
                         modifier = Modifier.fillMaxWidth().height(52.dp)
                     ) {
                         if (isLoading) {
                             CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
                         } else {
-                            Text("Create Account", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+                            Text("Sign In", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
                         }
+                    }
+
+                    Spacer(Modifier.height(16.dp))
+
+                    TextButton(
+                        onClick  = {},
+                        modifier = Modifier.align(Alignment.CenterHorizontally)
+                    ) {
+                        Text("Forgot password?", color = BrandBlue, fontSize = 14.sp)
                     }
                 }
             }

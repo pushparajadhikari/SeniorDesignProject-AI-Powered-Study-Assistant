@@ -1,6 +1,6 @@
 package com.example.aistudyassistant.screens
 
-import androidx.compose.foundation.Image
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -9,110 +9,152 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.aistudyassistant.R
+import com.example.aistudyassistant.ui.theme.*
+
+// ── Onboarding data ──────────────────────────────────────────────────────────
+
+data class OnboardingPage(
+    val emoji: String,
+    val title: String,
+    val subtitle: String,
+    val accentColor: Color
+)
+
+private val pages = listOf(
+    OnboardingPage(
+        emoji       = "📚",
+        title       = "Study Smarter",
+        subtitle    = "Upload your notes and get instant AI-powered answers drawn directly from your own material.",
+        accentColor = BrandTeal
+    ),
+    OnboardingPage(
+        emoji       = "📄",
+        title       = "Upload Anything",
+        subtitle    = "Drop in PDFs, lecture notes, or textbooks. We read the text and understand the diagrams too.",
+        accentColor = BrandBlue
+    ),
+    OnboardingPage(
+        emoji       = "🎯",
+        title       = "Practice Better",
+        subtitle    = "Generate quizzes from your own notes. Know exactly what you understand and what to review.",
+        accentColor = BrandViolet
+    )
+)
+
+// ── Screen ───────────────────────────────────────────────────────────────────
 
 @Composable
 fun OnboardingScreen(onFinish: () -> Unit) {
 
-    var page by remember { mutableStateOf(0) }
+    var pageIndex by remember { mutableStateOf(0) }
+    val page = pages[pageIndex]
 
-    val pages = listOf(
-        Triple(
-            R.drawable.onboarding_study,
-            "Study smarter",
-            "AI powered study assistant for students"
-        ),
-        Triple(
-            R.drawable.onboarding_upload,
-            "Upload materials",
-            "Upload PDFs, notes & documents easily"
-        ),
-        Triple(
-            R.drawable.onboarding_practice,
-            "Practice better",
-            "Get quizzes & insights instantly"
-        )
+    val gradientBrush = Brush.verticalGradient(
+        listOf(GradientStart, GradientMid, GradientEnd)
     )
-
-    val current = pages[page]
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    listOf(
-                        Color(0xFF7F7CFB),
-                        Color(0xFFB39DFF)
-                    )
-                )
-            )
+            .background(gradientBrush)
     ) {
+
+        // ── Skip button top right ─────────────────────────────────────────
+        if (pageIndex < pages.lastIndex) {
+            TextButton(
+                onClick  = onFinish,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(16.dp)
+            ) {
+                Text("Skip", color = Color.White.copy(alpha = 0.8f), fontSize = 14.sp)
+            }
+        }
+
         Column(
-            modifier = Modifier
+            modifier            = Modifier
                 .fillMaxSize()
-                .padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+                .padding(horizontal = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
         ) {
 
-            Spacer(Modifier.height(60.dp))
+            // ── Large emoji illustration ──────────────────────────────────
+            Box(
+                modifier            = Modifier
+                    .size(160.dp)
+                    .clip(CircleShape)
+                    .background(Color.White.copy(alpha = 0.15f)),
+                contentAlignment    = Alignment.Center
+            ) {
+                Text(page.emoji, fontSize = 72.sp)
+            }
 
-            Image(
-                painter = painterResource(current.first),
-                contentDescription = null,
-                modifier = Modifier
-                    .height(260.dp)
-                    .fillMaxWidth()
-            )
+            Spacer(Modifier.height(48.dp))
 
-            Spacer(Modifier.height(40.dp))
-
+            // ── Card ─────────────────────────────────────────────────────
             Card(
-                shape = RoundedCornerShape(24.dp),
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(Color.White)
+                shape  = RoundedCornerShape(28.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                modifier = Modifier.fillMaxWidth()
             ) {
                 Column(
-                    modifier = Modifier.padding(24.dp),
+                    modifier            = Modifier.padding(28.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
+
+                    // Accent pill
+                    Box(
+                        modifier = Modifier
+                            .width(40.dp)
+                            .height(4.dp)
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(page.accentColor)
+                    )
+
+                    Spacer(Modifier.height(20.dp))
+
                     Text(
-                        text = current.second,
-                        fontSize = 28.sp,
+                        text       = page.title,
+                        fontSize   = 28.sp,
                         fontWeight = FontWeight.Bold,
-                        textAlign = TextAlign.Center
+                        color      = TextPrimary,
+                        textAlign  = TextAlign.Center
                     )
 
                     Spacer(Modifier.height(12.dp))
 
                     Text(
-                        text = current.third,
-                        fontSize = 16.sp,
-                        color = Color.Gray,
-                        textAlign = TextAlign.Center
+                        text      = page.subtitle,
+                        fontSize  = 15.sp,
+                        color     = TextSecondary,
+                        textAlign = TextAlign.Center,
+                        lineHeight = 22.sp
                     )
 
-                    Spacer(Modifier.height(24.dp))
+                    Spacer(Modifier.height(28.dp))
 
-                    Row {
-                        pages.indices.forEach { index ->
+                    // ── Page dots ─────────────────────────────────────────
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment     = Alignment.CenterVertically
+                    ) {
+                        pages.indices.forEach { i ->
                             Box(
                                 modifier = Modifier
-                                    .size(if (index == page) 10.dp else 8.dp)
-                                    .padding(4.dp)
+                                    .height(6.dp)
+                                    .width(if (i == pageIndex) 24.dp else 6.dp)
+                                    .clip(RoundedCornerShape(3.dp))
                                     .background(
-                                        if (index == page)
-                                            Color(0xFF7F7CFB)
-                                        else
-                                            Color.LightGray,
-                                        CircleShape
+                                        if (i == pageIndex) page.accentColor
+                                        else Color.LightGray
                                     )
                             )
                         }
@@ -120,19 +162,25 @@ fun OnboardingScreen(onFinish: () -> Unit) {
 
                     Spacer(Modifier.height(24.dp))
 
+                    // ── Button ────────────────────────────────────────────
                     Button(
                         onClick = {
-                            if (page < pages.lastIndex) page++
+                            if (pageIndex < pages.lastIndex) pageIndex++
                             else onFinish()
                         },
-                        shape = RoundedCornerShape(16.dp),
+                        shape    = RoundedCornerShape(14.dp),
+                        colors   = ButtonDefaults.buttonColors(
+                            containerColor = page.accentColor
+                        ),
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(52.dp)
                     ) {
                         Text(
-                            text = if (page < pages.lastIndex) "Next" else "Get Started",
-                            fontSize = 18.sp
+                            text       = if (pageIndex < pages.lastIndex) "Continue" else "Get Started",
+                            fontSize   = 16.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color      = Color.White
                         )
                     }
                 }

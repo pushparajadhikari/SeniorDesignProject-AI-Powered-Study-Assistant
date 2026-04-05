@@ -8,10 +8,9 @@ import com.example.aistudyassistant.ui.theme.AIStudyAssistantTheme
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
         setContent {
             AIStudyAssistantTheme {
-                AppNavigation()   // ✅ SAFE: composable inside compose scope
+                AppNavigation()
             }
         }
     }

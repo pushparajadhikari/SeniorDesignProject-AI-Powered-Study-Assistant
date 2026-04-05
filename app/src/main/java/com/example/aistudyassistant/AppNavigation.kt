@@ -1,22 +1,30 @@
 package com.example.aistudyassistant
 
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
+import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.example.aistudyassistant.auth.UserManager
 import com.example.aistudyassistant.screens.*
 
 @Composable
 fun AppNavigation() {
 
+    val context       = LocalContext.current
     val navController = rememberNavController()
 
+    // Auto-navigate: if already logged in skip onboarding and auth
+    val startDestination = remember {
+        if (UserManager.isLoggedIn(context)) "dashboard" else "onboarding"
+    }
+
     NavHost(
-        navController = navController,
-        startDestination = "onboarding"
+        navController    = navController,
+        startDestination = startDestination
     ) {
 
-        // ---------------- Onboarding ----------------
+        // ── Onboarding ────────────────────────────────────────────────────
         composable("onboarding") {
             OnboardingScreen(
                 onFinish = {
@@ -27,15 +35,15 @@ fun AppNavigation() {
             )
         }
 
-        // ---------------- Auth Choice ----------------
+        // ── Auth Choice ───────────────────────────────────────────────────
         composable("auth") {
             AuthChoiceScreen(
-                onLogin = { navController.navigate("login") },
+                onLogin  = { navController.navigate("login") },
                 onSignup = { navController.navigate("signup") }
             )
         }
 
-        // ---------------- Login ----------------
+        // ── Login ─────────────────────────────────────────────────────────
         composable("login") {
             LoginScreen(
                 onLoginSuccess = {
@@ -43,13 +51,11 @@ fun AppNavigation() {
                         popUpTo("auth") { inclusive = true }
                     }
                 },
-                onBack = {
-                    navController.popBackStack()
-                }
+                onBack = { navController.popBackStack() }
             )
         }
 
-        // ---------------- Signup ----------------
+        // ── Signup ────────────────────────────────────────────────────────
         composable("signup") {
             SignupScreen(
                 onSignupSuccess = {
@@ -57,19 +63,30 @@ fun AppNavigation() {
                         popUpTo("auth") { inclusive = true }
                     }
                 },
-                onBack = {
-                    navController.popBackStack()
-                }
+                onBack = { navController.popBackStack() }
             )
         }
 
-        // ---------------- Dashboard ----------------
+        // ── Dashboard ─────────────────────────────────────────────────────
         composable("dashboard") {
+            // Auth guard — if session expired, send back to auth
+            val session = UserManager.getCurrentSession(context)
+            if (session == null) {
+                LaunchedEffect(Unit) {
+                    navController.navigate("auth") {
+                        popUpTo("dashboard") { inclusive = true }
+                    }
+                }
+                return@composable
+            }
+
             DashboardScreen(
-                onUploadClick = {
-                    navController.navigate("upload")
-                },
-                onLogout = {
+                onUploadClick = { navController.navigate("upload") },
+                onChatClick   = { navController.navigate("chat") },
+                onQuizClick   = { navController.navigate("quiz") },
+                onProfileClick = { navController.navigate("profile") },
+                onLogout      = {
+                    UserManager.logout(context)
                     navController.navigate("auth") {
                         popUpTo("dashboard") { inclusive = true }
                     }
@@ -77,11 +94,29 @@ fun AppNavigation() {
             )
         }
 
-        // ---------------- Upload PDF ----------------
+        // ── Upload PDF ────────────────────────────────────────────────────
         composable("upload") {
-            UploadPdfScreen(
-                onBack = {
-                    navController.popBackStack()
+            UploadPdfScreen(onBack = { navController.popBackStack() })
+        }
+
+        // ── Chat ──────────────────────────────────────────────────────────
+        composable("chat") {
+            ChatScreen(onBack = { navController.popBackStack() })
+        }
+
+        // ── Quiz ──────────────────────────────────────────────────────────
+        composable("quiz") {
+            QuizScreen(onBack = { navController.popBackStack() })
+        }
+
+        // ── Profile ───────────────────────────────────────────────────────
+        composable("profile") {
+            ProfileScreen(
+                onBack   = { navController.popBackStack() },
+                onLogout = {
+                    navController.navigate("auth") {
+                        popUpTo(0) { inclusive = true }
+                    }
                 }
             )
         }
