@@ -19,6 +19,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.aistudyassistant.network.ApiService
 import com.example.aistudyassistant.ui.theme.*
 import kotlinx.coroutines.launch
 
@@ -27,7 +28,8 @@ import kotlinx.coroutines.launch
 data class ChatMessage(
     val text:    String,
     val isUser:  Boolean,
-    val source:  String? = null   // e.g. "solar_system_overview.pdf — Page 2"
+    val source:  String? = null,   // e.g. "solar_system.pdf — Page 2"
+    val isError: Boolean = false
 )
 
 // ── Screen ────────────────────────────────────────────────────────────────────
@@ -36,43 +38,45 @@ data class ChatMessage(
 @Composable
 fun ChatScreen(onBack: () -> Unit) {
 
-    var inputText  by remember { mutableStateOf("") }
-    var isLoading  by remember { mutableStateOf(false) }
-    val messages   = remember { mutableStateListOf<ChatMessage>(
-        ChatMessage(
-            text   = "Hi! I'm your AI study assistant. Upload a PDF and ask me anything about it — I'll find the answer from your own notes. 📚",
-            isUser = false
+    var inputText by remember { mutableStateOf("") }
+    var isLoading by remember { mutableStateOf(false) }
+    val messages  = remember {
+        mutableStateListOf(
+            ChatMessage(
+                text   = "Hi! I'm your AI study assistant. Upload a PDF and ask me anything about it — I'll find the answer from your own notes. 📚",
+                isUser = false
+            )
         )
-    ) }
+    }
 
-    val listState  = rememberLazyListState()
-    val scope      = rememberCoroutineScope()
+    val listState = rememberLazyListState()
+    val scope     = rememberCoroutineScope()
 
     fun sendMessage() {
         val question = inputText.trim()
         if (question.isEmpty() || isLoading) return
 
-        // Add user message
         messages.add(ChatMessage(text = question, isUser = true))
         inputText = ""
         isLoading = true
 
         scope.launch {
             listState.animateScrollToItem(messages.lastIndex)
-        }
 
-        // TODO: Replace this with real FastAPI call
-        // val response = ApiService.ask(question)
-        // Simulated response for now:
-        scope.launch {
-            kotlinx.coroutines.delay(1500)
-            messages.add(
-                ChatMessage(
-                    text   = "This is where the AI answer will appear. Connect to the FastAPI backend at POST /ask to get real answers from your uploaded notes.",
-                    isUser = false,
-                    source = "Connect backend to see source"
-                )
-            )
+            ApiService.chat(question)
+                .onSuccess { (answer, source) ->
+                    messages.add(ChatMessage(text = answer, isUser = false, source = source))
+                }
+                .onFailure { err ->
+                    messages.add(
+                        ChatMessage(
+                            text    = "Could not reach the server. Is it running?\n${err.message ?: ""}",
+                            isUser  = false,
+                            isError = true
+                        )
+                    )
+                }
+
             isLoading = false
             listState.animateScrollToItem(messages.lastIndex)
         }
@@ -112,11 +116,7 @@ fun ChatScreen(onBack: () -> Unit) {
         },
         containerColor = SurfaceLight,
         bottomBar = {
-            // ── Input bar ─────────────────────────────────────────────────
-            Surface(
-                shadowElevation = 8.dp,
-                color           = Color.White
-            ) {
+            Surface(shadowElevation = 8.dp, color = Color.White) {
                 Row(
                     modifier          = Modifier
                         .fillMaxWidth()
@@ -138,11 +138,11 @@ fun ChatScreen(onBack: () -> Unit) {
                     )
                     Spacer(Modifier.width(8.dp))
                     FloatingActionButton(
-                        onClick            = { sendMessage() },
-                        containerColor     = if (inputText.isNotBlank()) BrandTeal else Color.LightGray,
-                        contentColor       = Color.White,
-                        modifier           = Modifier.size(48.dp),
-                        shape              = CircleShape
+                        onClick        = { sendMessage() },
+                        containerColor = if (inputText.isNotBlank() && !isLoading) BrandTeal else Color.LightGray,
+                        contentColor   = Color.White,
+                        modifier       = Modifier.size(48.dp),
+                        shape          = CircleShape
                     ) {
                         Icon(Icons.AutoMirrored.Filled.Send, "Send", modifier = Modifier.size(20.dp))
                     }
@@ -152,12 +152,12 @@ fun ChatScreen(onBack: () -> Unit) {
     ) { padding ->
 
         LazyColumn(
-            state          = listState,
-            modifier       = Modifier
+            state               = listState,
+            modifier            = Modifier
                 .fillMaxSize()
                 .padding(padding)
                 .padding(horizontal = 16.dp),
-            contentPadding = PaddingValues(vertical = 12.dp),
+            contentPadding      = PaddingValues(vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
 
@@ -165,6 +165,7 @@ fun ChatScreen(onBack: () -> Unit) {
                 ChatBubble(msg)
             }
 
+            // Typing indicator while waiting for response
             if (isLoading) {
                 item {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -187,8 +188,8 @@ fun ChatScreen(onBack: () -> Unit) {
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 CircularProgressIndicator(
-                                    color    = BrandTeal,
-                                    modifier = Modifier.size(16.dp),
+                                    color       = BrandTeal,
+                                    modifier    = Modifier.size(16.dp),
                                     strokeWidth = 2.dp
                                 )
                                 Spacer(Modifier.width(8.dp))
@@ -207,25 +208,21 @@ fun ChatScreen(onBack: () -> Unit) {
 @Composable
 fun ChatBubble(message: ChatMessage) {
     if (message.isUser) {
-        // User bubble — right aligned
         Row(
             modifier              = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.End
         ) {
-            Column(horizontalAlignment = Alignment.End) {
-                Box(
-                    modifier = Modifier
-                        .widthIn(max = 280.dp)
-                        .clip(RoundedCornerShape(16.dp, 16.dp, 4.dp, 16.dp))
-                        .background(BrandTeal)
-                        .padding(horizontal = 16.dp, vertical = 10.dp)
-                ) {
-                    Text(message.text, color = Color.White, fontSize = 14.sp)
-                }
+            Box(
+                modifier = Modifier
+                    .widthIn(max = 280.dp)
+                    .clip(RoundedCornerShape(16.dp, 16.dp, 4.dp, 16.dp))
+                    .background(BrandTeal)
+                    .padding(horizontal = 16.dp, vertical = 10.dp)
+            ) {
+                Text(message.text, color = Color.White, fontSize = 14.sp)
             }
         }
     } else {
-        // AI bubble — left aligned
         Row(
             modifier          = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.Top
@@ -234,10 +231,13 @@ fun ChatBubble(message: ChatMessage) {
                 modifier         = Modifier
                     .size(32.dp)
                     .clip(CircleShape)
-                    .background(BrandTeal.copy(alpha = 0.15f)),
+                    .background(
+                        if (message.isError) AccentRed.copy(alpha = 0.15f)
+                        else BrandTeal.copy(alpha = 0.15f)
+                    ),
                 contentAlignment = Alignment.Center
             ) {
-                Text("🤖", fontSize = 14.sp)
+                Text(if (message.isError) "⚠️" else "🤖", fontSize = 14.sp)
             }
 
             Spacer(Modifier.width(8.dp))
@@ -245,18 +245,19 @@ fun ChatBubble(message: ChatMessage) {
             Column(modifier = Modifier.widthIn(max = 280.dp)) {
                 Card(
                     shape  = RoundedCornerShape(16.dp, 16.dp, 16.dp, 4.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (message.isError) AccentRed.copy(alpha = 0.08f) else Color.White
+                    ),
                     elevation = CardDefaults.cardElevation(1.dp)
                 ) {
                     Text(
                         message.text,
                         fontSize = 14.sp,
-                        color    = TextPrimary,
+                        color    = if (message.isError) AccentRed else TextPrimary,
                         modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
                     )
                 }
 
-                // Source citation
                 if (!message.source.isNullOrEmpty()) {
                     Spacer(Modifier.height(4.dp))
                     Text(
