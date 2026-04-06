@@ -3,15 +3,16 @@ package com.example.aistudyassistant.screens
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.CloudUpload
-import androidx.compose.material.icons.filled.InsertDriveFile
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -19,19 +20,32 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.aistudyassistant.network.ApiService
 import com.example.aistudyassistant.ui.theme.*
+import kotlinx.coroutines.launch
+
+// Upload state machine
+private sealed class UploadState {
+    object Idle      : UploadState()
+    object Uploading : UploadState()
+    data class Success(val message: String) : UploadState()
+    data class Error(val message: String)   : UploadState()
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun UploadPdfScreen(onBack: () -> Unit) {
 
+    val context          = LocalContext.current
+    val scope            = rememberCoroutineScope()
     var selectedUri      by remember { mutableStateOf<Uri?>(null) }
     var selectedFileName by remember { mutableStateOf("") }
-    var uploadStatus     by remember { mutableStateOf<String?>(null) } // null | "uploading" | "done" | "error"
+    var uploadState      by remember { mutableStateOf<UploadState>(UploadState.Idle) }
 
     val pdfPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -39,7 +53,17 @@ fun UploadPdfScreen(onBack: () -> Unit) {
         if (uri != null) {
             selectedUri      = uri
             selectedFileName = uri.lastPathSegment?.substringAfterLast("/") ?: "document.pdf"
-            uploadStatus     = null
+            uploadState      = UploadState.Idle
+        }
+    }
+
+    fun doUpload() {
+        val uri = selectedUri ?: return
+        uploadState = UploadState.Uploading
+        scope.launch {
+            ApiService.uploadPdf(context, uri, selectedFileName)
+                .onSuccess { msg -> uploadState = UploadState.Success(msg) }
+                .onFailure { err -> uploadState = UploadState.Error(err.message ?: "Upload failed") }
         }
     }
 
@@ -53,7 +77,7 @@ fun UploadPdfScreen(onBack: () -> Unit) {
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color.White,
+                    containerColor    = Color.White,
                     titleContentColor = TextPrimary
                 )
             )
@@ -65,6 +89,7 @@ fun UploadPdfScreen(onBack: () -> Unit) {
             modifier            = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .verticalScroll(rememberScrollState())
                 .padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
@@ -78,10 +103,7 @@ fun UploadPdfScreen(onBack: () -> Unit) {
                     .height(200.dp)
                     .clip(RoundedCornerShape(20.dp))
                     .background(
-                        if (selectedUri != null)
-                            BrandTeal.copy(alpha = 0.08f)
-                        else
-                            Color.White
+                        if (selectedUri != null) BrandTeal.copy(alpha = 0.08f) else Color.White
                     )
                     .border(
                         width = 2.dp,
@@ -112,11 +134,7 @@ fun UploadPdfScreen(onBack: () -> Unit) {
                             color      = TextPrimary
                         )
                         Spacer(Modifier.height(4.dp))
-                        Text(
-                            "Supports PDF files up to 50MB",
-                            fontSize = 13.sp,
-                            color    = TextSecondary
-                        )
+                        Text("Supports PDF files up to 50 MB", fontSize = 13.sp, color = TextSecondary)
                     } else {
                         Icon(
                             Icons.Default.InsertDriveFile,
@@ -145,39 +163,30 @@ fun UploadPdfScreen(onBack: () -> Unit) {
             OutlinedButton(
                 onClick  = { pdfPickerLauncher.launch("application/pdf") },
                 shape    = RoundedCornerShape(12.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(48.dp)
+                modifier = Modifier.fillMaxWidth().height(48.dp)
             ) {
-                Text(
-                    if (selectedUri == null) "Select PDF" else "Change File",
-                    color = BrandBlue
-                )
+                Text(if (selectedUri == null) "Select PDF" else "Change File", color = BrandBlue)
             }
 
             Spacer(Modifier.height(12.dp))
 
             // ── Upload button ─────────────────────────────────────────────
+            val isUploading = uploadState is UploadState.Uploading
             Button(
-                onClick  = {
-                    if (selectedUri != null) {
-                        uploadStatus = "uploading"
-                        // TODO: call FastAPI /upload endpoint here
-                        // For now simulate success
-                        uploadStatus = "done"
-                    }
-                },
-                enabled  = selectedUri != null && uploadStatus != "uploading",
+                onClick  = { doUpload() },
+                enabled  = selectedUri != null && !isUploading,
                 shape    = RoundedCornerShape(14.dp),
                 colors   = ButtonDefaults.buttonColors(containerColor = BrandTeal),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(52.dp)
+                modifier = Modifier.fillMaxWidth().height(52.dp)
             ) {
-                if (uploadStatus == "uploading") {
-                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                    Spacer(Modifier.width(8.dp))
-                    Text("Indexing your notes...", color = Color.White)
+                if (isUploading) {
+                    CircularProgressIndicator(
+                        color       = Color.White,
+                        modifier    = Modifier.size(20.dp),
+                        strokeWidth = 2.dp
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Text("Indexing your notes…", color = Color.White, fontSize = 15.sp)
                 } else {
                     Icon(Icons.Default.CloudUpload, null, tint = Color.White)
                     Spacer(Modifier.width(8.dp))
@@ -185,9 +194,12 @@ fun UploadPdfScreen(onBack: () -> Unit) {
                 }
             }
 
-            // ── Success state ─────────────────────────────────────────────
-            if (uploadStatus == "done") {
-                Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(16.dp))
+
+            // ── Status cards ──────────────────────────────────────────────
+
+            AnimatedVisibility(visible = uploadState is UploadState.Success) {
+                val msg = (uploadState as? UploadState.Success)?.message ?: ""
                 Card(
                     shape  = RoundedCornerShape(16.dp),
                     colors = CardDefaults.cardColors(containerColor = AccentGreen.copy(alpha = 0.1f)),
@@ -201,18 +213,42 @@ fun UploadPdfScreen(onBack: () -> Unit) {
                         Spacer(Modifier.width(12.dp))
                         Column {
                             Text("Successfully indexed!", fontWeight = FontWeight.SemiBold, color = AccentGreen)
-                            Text("Your notes are ready to query.", fontSize = 13.sp, color = TextSecondary)
+                            Text(msg, fontSize = 13.sp, color = TextSecondary)
                         }
                     }
                 }
             }
 
-            Spacer(Modifier.height(32.dp))
+            AnimatedVisibility(visible = uploadState is UploadState.Error) {
+                val msg = (uploadState as? UploadState.Error)?.message ?: ""
+                Card(
+                    shape  = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = AccentRed.copy(alpha = 0.08f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier          = Modifier.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.ErrorOutline, null, tint = AccentRed, modifier = Modifier.size(24.dp))
+                        Spacer(Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Upload failed", fontWeight = FontWeight.SemiBold, color = AccentRed)
+                            Text(msg, fontSize = 12.sp, color = TextSecondary)
+                        }
+                        TextButton(onClick = { doUpload() }) {
+                            Text("Retry", color = BrandTeal)
+                        }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(28.dp))
 
             // ── Tips section ──────────────────────────────────────────────
             Card(
-                shape  = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.White),
+                shape    = RoundedCornerShape(16.dp),
+                colors   = CardDefaults.cardColors(containerColor = Color.White),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
@@ -221,6 +257,7 @@ fun UploadPdfScreen(onBack: () -> Unit) {
                     TipRow("📝", "Use PDFs with selectable text, not scanned images")
                     TipRow("📊", "Diagrams and charts are described by our vision AI")
                     TipRow("📚", "Upload multiple PDFs to query across all of them")
+                    TipRow("⏳", "Indexing can take a minute for large files — please wait")
                 }
             }
         }

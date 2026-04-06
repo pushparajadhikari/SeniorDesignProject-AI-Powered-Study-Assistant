@@ -19,51 +19,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.aistudyassistant.models.QuizQuestion
+import com.example.aistudyassistant.network.ApiService
 import com.example.aistudyassistant.ui.theme.*
-
-// ── Data model ────────────────────────────────────────────────────────────────
-
-data class QuizQuestion(
-    val question:      String,
-    val options:       List<String>,
-    val correctIndex:  Int,
-    val explanation:   String
-)
-
-// ── Placeholder questions (replace with FastAPI /quiz call) ───────────────────
-
-private val sampleQuestions = listOf(
-    QuizQuestion(
-        question     = "What technique does the app use to find answers from your notes?",
-        options      = listOf(
-            "Full document search",
-            "Retrieval-Augmented Generation (RAG)",
-            "Keyword matching",
-            "Random sampling"
-        ),
-        correctIndex = 1,
-        explanation  = "RAG retrieves the most semantically relevant chunks and passes them to the LLM."
-    ),
-    QuizQuestion(
-        question     = "Which model converts your text into vectors for search?",
-        options      = listOf("llama3.2:1b", "moondream", "nomic-embed-text", "GPT-4"),
-        correctIndex = 2,
-        explanation  = "nomic-embed-text produces 768-dimensional embeddings for similarity search."
-    ),
-    QuizQuestion(
-        question     = "What does the vision model moondream do?",
-        options      = listOf(
-            "Generates answers",
-            "Describes images and diagrams in PDFs",
-            "Converts text to speech",
-            "Encrypts your files"
-        ),
-        correctIndex = 1,
-        explanation  = "moondream reads images in your PDFs and produces text descriptions that are also indexed."
-    )
-)
 
 // ── Screen ────────────────────────────────────────────────────────────────────
 
@@ -71,12 +32,34 @@ private val sampleQuestions = listOf(
 @Composable
 fun QuizScreen(onBack: () -> Unit) {
 
-    var isLoading       by remember { mutableStateOf(false) }
-    var questions       by remember { mutableStateOf(sampleQuestions) }
+    var isLoading       by remember { mutableStateOf(true) }
+    var errorMessage    by remember { mutableStateOf<String?>(null) }
+    var questions       by remember { mutableStateOf<List<QuizQuestion>>(emptyList()) }
     var selectedAnswers by remember { mutableStateOf(mutableMapOf<Int, Int>()) }
     var showResults     by remember { mutableStateOf(false) }
+    var refreshKey      by remember { mutableStateOf(0) }   // increment to reload
 
-    val score = selectedAnswers.entries.count { (qi, ai) -> questions[qi].correctIndex == ai }
+    val score = selectedAnswers.entries.count { (qi, ai) ->
+        questions.getOrNull(qi)?.correctIndex == ai
+    }
+
+    // Fetch questions from the backend whenever refreshKey changes
+    LaunchedEffect(refreshKey) {
+        isLoading       = true
+        errorMessage    = null
+        selectedAnswers = mutableMapOf()
+        showResults     = false
+
+        ApiService.generateQuiz()
+            .onSuccess { q ->
+                questions = q
+                isLoading = false
+            }
+            .onFailure { err ->
+                errorMessage = err.message ?: "Quiz generation failed"
+                isLoading    = false
+            }
+    }
 
     Scaffold(
         topBar = {
@@ -93,12 +76,11 @@ fun QuizScreen(onBack: () -> Unit) {
                     }
                 },
                 actions = {
-                    IconButton(onClick = {
-                        // TODO: call FastAPI /quiz
-                        selectedAnswers = mutableMapOf()
-                        showResults     = false
-                    }) {
-                        Icon(Icons.Default.Refresh, "Regenerate", tint = BrandTeal)
+                    IconButton(
+                        onClick  = { refreshKey++ },
+                        enabled  = !isLoading
+                    ) {
+                        Icon(Icons.Default.Refresh, "Regenerate quiz", tint = BrandTeal)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -110,26 +92,68 @@ fun QuizScreen(onBack: () -> Unit) {
         containerColor = SurfaceLight
     ) { padding ->
 
+        // ── Loading ───────────────────────────────────────────────────────
         if (isLoading) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Box(
+                modifier         = Modifier.fillMaxSize().padding(padding),
+                contentAlignment = Alignment.Center
+            ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     CircularProgressIndicator(color = BrandViolet)
-                    Spacer(Modifier.height(12.dp))
-                    Text("Generating quiz from your notes…", color = TextSecondary)
+                    Spacer(Modifier.height(16.dp))
+                    Text("Generating quiz from your notes…", color = TextSecondary, fontSize = 14.sp)
+                    Spacer(Modifier.height(4.dp))
+                    Text("This may take up to a minute.", fontSize = 12.sp, color = TextSecondary)
                 }
             }
             return@Scaffold
         }
 
+        // ── Error ─────────────────────────────────────────────────────────
+        if (errorMessage != null) {
+            Box(
+                modifier         = Modifier.fillMaxSize().padding(padding).padding(24.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("⚠️", fontSize = 48.sp)
+                    Spacer(Modifier.height(16.dp))
+                    Text(
+                        "Could not generate quiz",
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize   = 18.sp,
+                        color      = TextPrimary
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        errorMessage ?: "",
+                        fontSize  = 13.sp,
+                        color     = TextSecondary,
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(Modifier.height(24.dp))
+                    Button(
+                        onClick = { refreshKey++ },
+                        shape   = RoundedCornerShape(12.dp),
+                        colors  = ButtonDefaults.buttonColors(containerColor = BrandViolet)
+                    ) {
+                        Icon(Icons.Default.Refresh, null, tint = Color.White)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Try Again", color = Color.White)
+                    }
+                }
+            }
+            return@Scaffold
+        }
+
+        // ── Quiz content ──────────────────────────────────────────────────
         LazyColumn(
-            modifier       = Modifier
-                .fillMaxSize()
-                .padding(padding),
-            contentPadding = PaddingValues(16.dp),
+            modifier            = Modifier.fillMaxSize().padding(padding),
+            contentPadding      = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
 
-            // ── Score banner (shown after submit) ─────────────────────────
+            // Score banner (shown after submit)
             if (showResults) {
                 item {
                     Card(
@@ -144,7 +168,7 @@ fun QuizScreen(onBack: () -> Unit) {
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text   = if (score == questions.size) "🎉" else "📊",
+                                text     = if (score == questions.size) "🎉" else "📊",
                                 fontSize = 36.sp
                             )
                             Spacer(Modifier.width(16.dp))
@@ -167,7 +191,7 @@ fun QuizScreen(onBack: () -> Unit) {
                 }
             }
 
-            // ── Questions ─────────────────────────────────────────────────
+            // Questions
             itemsIndexed(questions) { qi, question ->
                 QuizCard(
                     questionIndex  = qi,
@@ -182,7 +206,7 @@ fun QuizScreen(onBack: () -> Unit) {
                 )
             }
 
-            // ── Submit / Try again button ─────────────────────────────────
+            // Submit / Try again
             item {
                 if (!showResults) {
                     Button(
@@ -190,9 +214,7 @@ fun QuizScreen(onBack: () -> Unit) {
                         enabled  = selectedAnswers.size == questions.size,
                         shape    = RoundedCornerShape(14.dp),
                         colors   = ButtonDefaults.buttonColors(containerColor = BrandViolet),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(52.dp)
+                        modifier = Modifier.fillMaxWidth().height(52.dp)
                     ) {
                         Text(
                             "Submit Answers",
@@ -202,19 +224,30 @@ fun QuizScreen(onBack: () -> Unit) {
                         )
                     }
                 } else {
-                    OutlinedButton(
-                        onClick  = {
-                            selectedAnswers = mutableMapOf()
-                            showResults     = false
-                        },
-                        shape    = RoundedCornerShape(14.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(52.dp)
+                    Row(
+                        modifier              = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Icon(Icons.Default.Refresh, null, tint = BrandViolet)
-                        Spacer(Modifier.width(8.dp))
-                        Text("Try Again", color = BrandViolet, fontWeight = FontWeight.SemiBold)
+                        OutlinedButton(
+                            onClick  = {
+                                selectedAnswers = mutableMapOf()
+                                showResults     = false
+                            },
+                            shape    = RoundedCornerShape(14.dp),
+                            modifier = Modifier.weight(1f).height(52.dp)
+                        ) {
+                            Text("Try Again", color = BrandViolet, fontWeight = FontWeight.SemiBold)
+                        }
+                        Button(
+                            onClick  = { refreshKey++ },
+                            shape    = RoundedCornerShape(14.dp),
+                            colors   = ButtonDefaults.buttonColors(containerColor = BrandViolet),
+                            modifier = Modifier.weight(1f).height(52.dp)
+                        ) {
+                            Icon(Icons.Default.Refresh, null, tint = Color.White, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("New Quiz", color = Color.White, fontWeight = FontWeight.SemiBold)
+                        }
                     }
                 }
             }
@@ -233,10 +266,10 @@ fun QuizCard(
     onAnswerSelect: (Int) -> Unit
 ) {
     Card(
-        shape  = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        shape     = RoundedCornerShape(20.dp),
+        colors    = CardDefaults.cardColors(containerColor = Color.White),
         elevation = CardDefaults.cardElevation(2.dp),
-        modifier = Modifier.fillMaxWidth()
+        modifier  = Modifier.fillMaxWidth()
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
 
@@ -268,17 +301,17 @@ fun QuizCard(
 
             Spacer(Modifier.height(16.dp))
 
-            // Options
+            // Options A / B / C / D
             question.options.forEachIndexed { ai, option ->
                 val isSelected = selectedAnswer == ai
                 val isCorrect  = question.correctIndex == ai
                 val isWrong    = showResult && isSelected && !isCorrect
 
                 val bgColor = when {
-                    showResult && isCorrect  -> AccentGreen.copy(alpha = 0.12f)
-                    isWrong                  -> AccentRed.copy(alpha = 0.12f)
-                    isSelected               -> BrandViolet.copy(alpha = 0.1f)
-                    else                     -> Color(0xFFF8F9FA)
+                    showResult && isCorrect -> AccentGreen.copy(alpha = 0.12f)
+                    isWrong                -> AccentRed.copy(alpha = 0.12f)
+                    isSelected             -> BrandViolet.copy(alpha = 0.1f)
+                    else                   -> Color(0xFFF8F9FA)
                 }
                 val borderColor = when {
                     showResult && isCorrect -> AccentGreen
@@ -298,7 +331,6 @@ fun QuizCard(
                         .padding(horizontal = 14.dp, vertical = 12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Option letter
                     Text(
                         text       = listOf("A", "B", "C", "D")[ai],
                         fontWeight = FontWeight.Bold,

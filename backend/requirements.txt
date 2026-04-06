@@ -1,0 +1,15 @@
+# AI Study Assistant — backend dependencies
+# Install with: pip install -r requirements.txt
+
+fastapi>=0.110.0
+uvicorn[standard]>=0.27.0
+python-multipart>=0.0.9    # required for FastAPI file uploads
+
+# PDF parsing
+pymupdf>=1.23.0            # import as fitz
+
+# Vector store
+chromadb>=0.4.24
+
+# HTTP client (calls Ollama)
+requests>=2.31.0

@@ -15,12 +15,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.aistudyassistant.auth.UserManager
+import com.example.aistudyassistant.network.ApiService
 import com.example.aistudyassistant.ui.theme.*
 import java.util.Calendar
 
@@ -34,7 +34,6 @@ fun DashboardScreen(
 ) {
     val context = LocalContext.current
     val session = UserManager.getCurrentSession(context)
-    val docs    = remember { UserManager.getUploadedDocs(context, session?.userId ?: "") }
 
     val greeting = remember {
         when (Calendar.getInstance().get(Calendar.HOUR_OF_DAY)) {
@@ -44,12 +43,30 @@ fun DashboardScreen(
         }
     }
 
+    // ── Backend state ─────────────────────────────────────────────────────────
+    var docs         by remember { mutableStateOf<List<String>>(emptyList()) }
+    var docsLoading  by remember { mutableStateOf(true) }
+    var serverOnline by remember { mutableStateOf<Boolean?>(null) }   // null = checking
+    var refreshKey   by remember { mutableStateOf(0) }
+
+    LaunchedEffect(refreshKey) {
+        docsLoading = true
+        // Run health-check and docs-list concurrently
+        serverOnline = ApiService.checkHealth()
+        if (serverOnline == true) {
+            ApiService.getDocsList()
+                .onSuccess { docs = it }
+                .onFailure { /* keep previous list */ }
+        }
+        docsLoading = false
+    }
+
     LazyColumn(
         modifier       = Modifier.fillMaxSize().background(SurfaceLight),
         contentPadding = PaddingValues(bottom = 32.dp)
     ) {
 
-        // ── Header ────────────────────────────────────────────────────────
+        // ── Gradient header ───────────────────────────────────────────────
         item {
             Box(
                 modifier = Modifier
@@ -74,27 +91,32 @@ fun DashboardScreen(
                             )
                         }
 
-                        // Profile avatar — tappable
-                        Box(
-                            modifier         = Modifier
-                                .size(44.dp)
-                                .clip(CircleShape)
-                                .background(Color.White.copy(alpha = 0.2f))
-                                .clickable(onClick = onProfileClick),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                session?.userName?.take(1)?.uppercase() ?: "?",
-                                fontSize   = 20.sp,
-                                fontWeight = FontWeight.Bold,
-                                color      = Color.White
-                            )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            // Server status dot
+                            ServerStatusDot(serverOnline)
+                            Spacer(Modifier.width(12.dp))
+                            // Profile avatar
+                            Box(
+                                modifier         = Modifier
+                                    .size(44.dp)
+                                    .clip(CircleShape)
+                                    .background(Color.White.copy(alpha = 0.2f))
+                                    .clickable(onClick = onProfileClick),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    session?.userName?.take(1)?.uppercase() ?: "?",
+                                    fontSize   = 20.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color      = Color.White
+                                )
+                            }
                         }
                     }
 
                     Spacer(Modifier.height(20.dp))
 
-                    // Stats
+                    // Stats row
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         StatChip("${docs.size} PDF${if (docs.size != 1) "s" else ""}", "📄")
                         StatChip("Ask AI", "💬")
@@ -145,12 +167,86 @@ fun DashboardScreen(
             }
         }
 
-        // ── Recent documents ──────────────────────────────────────────────
-        if (docs.isNotEmpty()) {
-            item {
-                Column(modifier = Modifier.padding(horizontal = 20.dp)) {
+        // ── Documents section ─────────────────────────────────────────────
+        item {
+            Column(modifier = Modifier.padding(horizontal = 20.dp)) {
+                Row(
+                    modifier              = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment     = Alignment.CenterVertically
+                ) {
                     Text("Your Documents", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
-                    Spacer(Modifier.height(8.dp))
+                    IconButton(
+                        onClick  = { refreshKey++ },
+                        enabled  = !docsLoading
+                    ) {
+                        if (docsLoading) {
+                            CircularProgressIndicator(
+                                modifier    = Modifier.size(18.dp),
+                                color       = BrandTeal,
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            Icon(Icons.Default.Refresh, "Refresh docs", tint = BrandTeal)
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(8.dp))
+
+                if (serverOnline == false) {
+                    // Server offline banner
+                    Card(
+                        shape  = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(containerColor = AccentRed.copy(alpha = 0.08f)),
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                    ) {
+                        Row(
+                            modifier          = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.WifiOff, null, tint = AccentRed, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(10.dp))
+                            Text(
+                                "Backend unreachable — upload and chat unavailable",
+                                fontSize = 13.sp,
+                                color    = AccentRed
+                            )
+                        }
+                    }
+                } else if (docsLoading) {
+                    // Skeleton rows
+                    repeat(2) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(52.dp)
+                                .padding(vertical = 4.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(Color.LightGray.copy(alpha = 0.3f))
+                        )
+                    }
+                } else if (docs.isEmpty()) {
+                    Card(
+                        shape  = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color.White),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier            = Modifier.fillMaxWidth().padding(20.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text("📂", fontSize = 32.sp)
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                "No documents yet",
+                                fontWeight = FontWeight.SemiBold,
+                                color      = TextPrimary
+                            )
+                            Text("Upload a PDF to get started", fontSize = 13.sp, color = TextSecondary)
+                        }
+                    }
+                } else {
                     docs.forEach { docName ->
                         Card(
                             shape    = RoundedCornerShape(12.dp),
@@ -163,7 +259,12 @@ fun DashboardScreen(
                             ) {
                                 Text("📄", fontSize = 20.sp)
                                 Spacer(Modifier.width(10.dp))
-                                Text(docName, fontSize = 13.sp, color = TextPrimary, modifier = Modifier.weight(1f))
+                                Text(
+                                    docName,
+                                    fontSize = 13.sp,
+                                    color    = TextPrimary,
+                                    modifier = Modifier.weight(1f)
+                                )
                             }
                         }
                     }
@@ -173,7 +274,7 @@ fun DashboardScreen(
 
         // ── How it works ──────────────────────────────────────────────────
         item {
-            Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = if (docs.isEmpty()) 0.dp else 16.dp)) {
+            Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp)) {
                 Text("How It Works", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
                 Spacer(Modifier.height(12.dp))
                 HowItWorksCard("1", "Upload your notes", "Add any PDF — lecture slides, textbooks, or notes", BrandTeal)
@@ -186,7 +287,34 @@ fun DashboardScreen(
     }
 }
 
-// ── Sub-components (reused from before) ──────────────────────────────────────
+// ── Server status indicator ───────────────────────────────────────────────────
+
+@Composable
+fun ServerStatusDot(serverOnline: Boolean?) {
+    val (dotColor, label) = when (serverOnline) {
+        true  -> Pair(AccentGreen, "Server online")
+        false -> Pair(AccentRed, "Server offline")
+        null  -> Pair(AccentAmber, "Checking…")
+    }
+    Row(
+        modifier          = Modifier
+            .clip(RoundedCornerShape(20.dp))
+            .background(Color.White.copy(alpha = 0.15f))
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(8.dp)
+                .clip(CircleShape)
+                .background(dotColor)
+        )
+        Spacer(Modifier.width(4.dp))
+        Text(label, fontSize = 10.sp, color = Color.White, fontWeight = FontWeight.Medium)
+    }
+}
+
+// ── Sub-components ────────────────────────────────────────────────────────────
 
 @Composable
 fun StatChip(label: String, icon: String) {
@@ -220,7 +348,7 @@ fun ActionCard(
         elevation = CardDefaults.cardElevation(2.dp)
     ) {
         Column(
-            modifier = Modifier.fillMaxSize().padding(16.dp),
+            modifier            = Modifier.fillMaxSize().padding(16.dp),
             verticalArrangement = Arrangement.SpaceBetween
         ) {
             Box(
