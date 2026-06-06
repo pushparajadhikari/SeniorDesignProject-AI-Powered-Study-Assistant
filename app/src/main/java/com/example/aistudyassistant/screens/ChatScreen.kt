@@ -10,6 +10,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -40,18 +41,18 @@ data class ChatMessage(
 fun ChatScreen(onBack: () -> Unit) {
 
     // Unique session ID for this chat session — enables multi-turn conversation memory on the backend.
-    val sessionId = remember { UUID.randomUUID().toString() }
+    // A var so "clear session" can generate a fresh UUID and start a brand-new conversation.
+    var sessionId by remember { mutableStateOf(UUID.randomUUID().toString()) }
+
+    // The greeting the chat always opens with — also used to reset the list on clear.
+    val welcomeMessage = ChatMessage(
+        text   = "Hi! I'm your AI study assistant. Upload a PDF and ask me anything about it — I'll find the answer from your own notes. 📚",
+        isUser = false
+    )
 
     var inputText by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
-    val messages  = remember {
-        mutableStateListOf(
-            ChatMessage(
-                text   = "Hi! I'm your AI study assistant. Upload a PDF and ask me anything about it — I'll find the answer from your own notes. 📚",
-                isUser = false
-            )
-        )
-    }
+    val messages  = remember { mutableStateListOf(welcomeMessage) }
 
     val listState = rememberLazyListState()
     val scope     = rememberCoroutineScope()
@@ -86,6 +87,18 @@ fun ChatScreen(onBack: () -> Unit) {
         }
     }
 
+    fun clearSession() {
+        val oldSession = sessionId
+        // Reset the conversation locally first so the UI feels instant.
+        messages.clear()
+        messages.add(welcomeMessage)
+        // Start a fresh session so the backend treats the next question as a new conversation.
+        sessionId = UUID.randomUUID().toString()
+        scope.launch {
+            ApiService.clearSession(oldSession)
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -110,6 +123,11 @@ fun ChatScreen(onBack: () -> Unit) {
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { clearSession() }) {
+                        Icon(Icons.Default.Delete, "Clear session")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(

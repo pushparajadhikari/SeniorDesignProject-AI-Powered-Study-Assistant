@@ -229,4 +229,23 @@ object ApiService {
             Result.failure(e)
         }
     }
+
+    /**
+     * DELETE /clear-session/{session_id} — wipe the backend's conversation memory
+     * for this chat session so the next question starts fresh.
+     */
+    suspend fun clearSession(sessionId: String): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val req = Request.Builder()
+                .url("${NetworkConfig.BASE_URL}/clear-session/${Uri.encode(sessionId)}")
+                .delete()
+                .build()
+            client.newCall(req).execute().use { resp ->
+                if (resp.isSuccessful) Result.success(Unit)
+                else Result.failure(IOException("Clear session failed (${resp.code})"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
 }
