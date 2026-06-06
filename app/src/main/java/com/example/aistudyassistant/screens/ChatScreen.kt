@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.sp
 import com.example.aistudyassistant.network.ApiService
 import com.example.aistudyassistant.ui.theme.*
 import kotlinx.coroutines.launch
+import java.util.UUID
 
 // ── Data models ───────────────────────────────────────────────────────────────
 
@@ -37,6 +38,9 @@ data class ChatMessage(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatScreen(onBack: () -> Unit) {
+
+    // Unique session ID for this chat session — enables multi-turn conversation memory on the backend.
+    val sessionId = remember { UUID.randomUUID().toString() }
 
     var inputText by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
@@ -63,7 +67,7 @@ fun ChatScreen(onBack: () -> Unit) {
         scope.launch {
             listState.animateScrollToItem(messages.lastIndex)
 
-            ApiService.chat(question)
+            ApiService.chat(question, sessionId)
                 .onSuccess { (answer, source) ->
                     messages.add(ChatMessage(text = answer, isUser = false, source = source))
                 }

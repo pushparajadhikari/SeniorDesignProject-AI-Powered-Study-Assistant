@@ -28,6 +28,13 @@ object ApiService {
     private val gson = Gson()
     private val JSON_MEDIA = "application/json; charset=utf-8".toMediaType()
 
+    // ── Private request DTOs ──────────────────────────────────────────────────
+
+    private data class ChatRequest(
+        val question: String,
+        @SerializedName("session_id") val sessionId: String? = null
+    )
+
     // ── Private response DTOs ─────────────────────────────────────────────────
 
     private data class UploadResponse(
@@ -127,9 +134,9 @@ object ApiService {
      * POST /chat — send a question, get an AI answer + source citation.
      * Returns a [Pair] of (answer text, optional source string like "notes.pdf — Page 3").
      */
-    suspend fun chat(question: String): Result<Pair<String, String?>> = withContext(Dispatchers.IO) {
+    suspend fun chat(question: String, sessionId: String? = null): Result<Pair<String, String?>> = withContext(Dispatchers.IO) {
         try {
-            val body = gson.toJson(mapOf("question" to question)).toRequestBody(JSON_MEDIA)
+            val body = gson.toJson(ChatRequest(question, sessionId)).toRequestBody(JSON_MEDIA)
             val req  = Request.Builder()
                 .url("${NetworkConfig.BASE_URL}/chat")
                 .post(body)
