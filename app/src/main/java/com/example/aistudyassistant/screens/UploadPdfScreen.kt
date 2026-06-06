@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.aistudyassistant.network.ApiService
 import com.example.aistudyassistant.ui.theme.*
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 // Upload state machine
@@ -47,6 +48,10 @@ fun UploadPdfScreen(onBack: () -> Unit) {
     var selectedFileName by remember { mutableStateOf("") }
     var uploadState      by remember { mutableStateOf<UploadState>(UploadState.Idle) }
 
+    // Indexing-progress polling state (0–100). isPolling drives the progress bar's visibility.
+    var uploadProgress   by remember { mutableStateOf(0) }
+    var isPolling        by remember { mutableStateOf(false) }
+
     val pdfPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
@@ -57,12 +62,35 @@ fun UploadPdfScreen(onBack: () -> Unit) {
         }
     }
 
+    // Poll GET /upload-progress/{filename} every 2 s, stopping when the backend
+    // reports complete=true or after 10 attempts.
+    fun pollUploadProgress() {
+        isPolling      = true
+        uploadProgress = 0
+        scope.launch {
+            repeat(10) {
+                val (percent, isComplete) = ApiService.getUploadProgress(selectedFileName)
+                uploadProgress = percent
+                if (isComplete) {
+                    uploadProgress = 100
+                    isPolling      = false
+                    return@launch
+                }
+                delay(2000)
+            }
+            isPolling = false
+        }
+    }
+
     fun doUpload() {
         val uri = selectedUri ?: return
         uploadState = UploadState.Uploading
         scope.launch {
             ApiService.uploadPdf(context, uri, selectedFileName)
-                .onSuccess { msg -> uploadState = UploadState.Success(msg) }
+                .onSuccess { msg ->
+                    uploadState = UploadState.Success(msg)
+                    pollUploadProgress()
+                }
                 .onFailure { err -> uploadState = UploadState.Error(err.message ?: "Upload failed") }
         }
     }
@@ -191,6 +219,26 @@ fun UploadPdfScreen(onBack: () -> Unit) {
                     Icon(Icons.Default.CloudUpload, null, tint = Color.White)
                     Spacer(Modifier.width(8.dp))
                     Text("Upload & Index", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+                }
+            }
+
+            // ── Indexing progress bar ─────────────────────────────────────
+            AnimatedVisibility(visible = isPolling || uploadProgress > 0) {
+                Column(modifier = Modifier.fillMaxWidth().padding(top = 16.dp)) {
+                    Row(
+                        modifier              = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("Indexing progress", fontSize = 13.sp, color = TextSecondary)
+                        Text("$uploadProgress%", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = BrandTeal)
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    LinearProgressIndicator(
+                        progress = { uploadProgress / 100f },
+                        modifier = Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp)),
+                        color    = BrandTeal,
+                        trackColor = BrandTeal.copy(alpha = 0.15f)
+                    )
                 }
             }
 

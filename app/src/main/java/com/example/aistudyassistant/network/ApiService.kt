@@ -63,6 +63,11 @@ object ApiService {
         val questions: List<QuizQuestionDto>
     )
 
+    private data class UploadProgressResponse(
+        val percent:  Int  = 0,
+        val complete: Boolean = false
+    )
+
     private data class ErrorResponse(val detail: String?)
 
     // ── Helpers ───────────────────────────────────────────────────────────────
@@ -227,6 +232,30 @@ object ApiService {
             }
         } catch (e: Exception) {
             Result.failure(e)
+        }
+    }
+
+    /**
+     * GET /upload-progress/{filename} — poll indexing progress for a freshly
+     * uploaded file. Returns a [Pair] of (percent 0–100, isComplete).
+     * On any error returns (0, false) so callers can simply keep polling.
+     */
+    suspend fun getUploadProgress(filename: String): Pair<Int, Boolean> = withContext(Dispatchers.IO) {
+        try {
+            val req = Request.Builder()
+                .url("${NetworkConfig.BASE_URL}/upload-progress/${Uri.encode(filename)}")
+                .build()
+            client.newCall(req).execute().use { resp ->
+                val respBody = resp.body?.string() ?: ""
+                if (resp.isSuccessful) {
+                    val parsed = gson.fromJson(respBody, UploadProgressResponse::class.java)
+                    Pair(parsed.percent, parsed.complete)
+                } else {
+                    Pair(0, false)
+                }
+            }
+        } catch (_: Exception) {
+            Pair(0, false)
         }
     }
 
