@@ -7,10 +7,10 @@ package com.example.aistudyassistant.network
  */
 object NetworkConfig {
     /** Tailscale IP of the machine running the FastAPI backend. */
-    private const val BACKEND_HOST = "100.88.81.96"
+    private const val BACKEND_HOST = "100.95.45.33"
 
     /** Port FastAPI listens on (uvicorn default). */
-    private const val BACKEND_PORT = 8000
+    private const val BACKEND_PORT = 8002
 
     /** Full base URL — the only value the rest of the app uses. */
     const val BASE_URL = "http://$BACKEND_HOST:$BACKEND_PORT"
