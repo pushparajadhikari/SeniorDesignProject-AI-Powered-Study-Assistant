@@ -38,8 +38,9 @@ private enum class ProfileSubScreen { NONE, CHANGE_PASSWORD, PRIVACY, ABOUT, HEL
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileScreen(
-    onBack:   () -> Unit,
-    onLogout: () -> Unit
+    onBack:         () -> Unit,
+    onLogout:       () -> Unit,
+    showBackButton: Boolean = true
 ) {
     val context = LocalContext.current
     val session = UserManager.getCurrentSession(context)
@@ -107,8 +108,10 @@ fun ProfileScreen(
             TopAppBar(
                 title  = { Text("Profile", fontWeight = FontWeight.SemiBold) },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
+                    if (showBackButton) {
+                        IconButton(onClick = onBack) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(

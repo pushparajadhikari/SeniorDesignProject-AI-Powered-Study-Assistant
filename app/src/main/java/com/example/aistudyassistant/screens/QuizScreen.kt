@@ -30,7 +30,7 @@ import com.example.aistudyassistant.ui.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun QuizScreen(onBack: () -> Unit) {
+fun QuizScreen(onBack: () -> Unit, showBackButton: Boolean = true) {
 
     var isLoading       by remember { mutableStateOf(true) }
     var errorMessage    by remember { mutableStateOf<String?>(null) }
@@ -71,8 +71,10 @@ fun QuizScreen(onBack: () -> Unit) {
                     }
                 },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
+                    if (showBackButton) {
+                        IconButton(onClick = onBack) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
+                        }
                     }
                 },
                 actions = {

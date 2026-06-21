@@ -11,13 +11,18 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.aistudyassistant.network.ApiService
@@ -38,7 +43,7 @@ data class ChatMessage(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ChatScreen(onBack: () -> Unit) {
+fun ChatScreen(onBack: () -> Unit, onHistory: () -> Unit = {}, showBackButton: Boolean = true) {
 
     // Unique session ID for this chat session — enables multi-turn conversation memory on the backend.
     // A var so "clear session" can generate a fresh UUID and start a brand-new conversation.
@@ -121,11 +126,16 @@ fun ChatScreen(onBack: () -> Unit) {
                     }
                 },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
+                    if (showBackButton) {
+                        IconButton(onClick = onBack) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
+                        }
                     }
                 },
                 actions = {
+                    IconButton(onClick = onHistory) {
+                        Icon(Icons.Default.History, "History")
+                    }
                     IconButton(onClick = { clearSession() }) {
                         Icon(Icons.Default.Delete, "Clear session")
                     }
@@ -273,7 +283,7 @@ fun ChatBubble(message: ChatMessage) {
                     elevation = CardDefaults.cardElevation(1.dp)
                 ) {
                     Text(
-                        message.text,
+                        text     = parseSimpleMarkdown(message.text),
                         fontSize = 14.sp,
                         color    = if (message.isError) AccentRed else TextPrimary,
                         modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
@@ -291,5 +301,66 @@ fun ChatBubble(message: ChatMessage) {
                 }
             }
         }
+    }
+}
+
+// ── Lightweight markdown rendering ──────────────────────────────────────────────
+
+/**
+ * Renders a small subset of markdown as an [AnnotatedString] — no external library.
+ * Supported:
+ *   • **bold text**                       → bold span
+ *   • lines starting with "- " or "* "    → indented bullet point ("  • …")
+ *   • "[From your notes]:" / "[From general knowledge]:" line prefixes
+ *                                         → prefix in BrandTeal bold, rest normal
+ *   • line breaks are preserved
+ */
+private val boldRegex = Regex("""\*\*(.+?)\*\*""")
+private val sourcePrefixes = listOf("[From your notes]:", "[From general knowledge]:")
+
+fun parseSimpleMarkdown(text: String): AnnotatedString = buildAnnotatedString {
+    val lines = text.split("\n")
+    lines.forEachIndexed { index, rawLine ->
+        var line = rawLine
+
+        // Source-attribution prefixes: teal bold prefix, normal remainder.
+        val matchedPrefix = sourcePrefixes.firstOrNull { line.trimStart().startsWith(it) }
+        if (matchedPrefix != null) {
+            val leading = line.takeWhile { it == ' ' || it == '\t' }
+            if (leading.isNotEmpty()) append(leading)
+            withStyle(SpanStyle(color = BrandTeal, fontWeight = FontWeight.Bold)) {
+                append(matchedPrefix)
+            }
+            val rest = line.trimStart().removePrefix(matchedPrefix)
+            appendInlineBold(rest)
+        } else {
+            // Bullet points: "- " or "* " → indented "  • ".
+            val trimmed = line.trimStart()
+            if (trimmed.startsWith("- ") || trimmed.startsWith("* ")) {
+                append("  • ")
+                appendInlineBold(trimmed.substring(2))
+            } else {
+                appendInlineBold(line)
+            }
+        }
+
+        if (index != lines.lastIndex) append("\n")
+    }
+}
+
+/** Appends [text], converting `**bold**` runs into bold spans. */
+private fun androidx.compose.ui.text.AnnotatedString.Builder.appendInlineBold(text: String) {
+    var lastIndex = 0
+    for (match in boldRegex.findAll(text)) {
+        if (match.range.first > lastIndex) {
+            append(text.substring(lastIndex, match.range.first))
+        }
+        withStyle(SpanStyle(fontWeight = FontWeight.Bold)) {
+            append(match.groupValues[1])
+        }
+        lastIndex = match.range.last + 1
+    }
+    if (lastIndex < text.length) {
+        append(text.substring(lastIndex))
     }
 }
