@@ -18,6 +18,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -25,6 +26,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.aistudyassistant.auth.UserManager
 import com.example.aistudyassistant.network.ApiService
 import com.example.aistudyassistant.ui.theme.*
 import kotlinx.coroutines.launch
@@ -44,6 +46,10 @@ data class ChatMessage(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatScreen(onBack: () -> Unit, onHistory: () -> Unit = {}, showBackButton: Boolean = true) {
+
+    val context = LocalContext.current
+    // Server-assigned user id (null if offline) — lets the backend scope chat to this user's docs.
+    val serverId = remember { UserManager.getCurrentSession(context)?.serverId }
 
     // Unique session ID for this chat session — enables multi-turn conversation memory on the backend.
     // A var so "clear session" can generate a fresh UUID and start a brand-new conversation.
@@ -73,7 +79,7 @@ fun ChatScreen(onBack: () -> Unit, onHistory: () -> Unit = {}, showBackButton: B
         scope.launch {
             listState.animateScrollToItem(messages.lastIndex)
 
-            ApiService.chat(question, sessionId)
+            ApiService.chat(question, sessionId, serverId)
                 .onSuccess { (answer, source) ->
                     messages.add(ChatMessage(text = answer, isUser = false, source = source))
                 }

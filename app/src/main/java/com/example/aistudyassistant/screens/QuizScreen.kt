@@ -18,19 +18,27 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.aistudyassistant.auth.UserManager
 import com.example.aistudyassistant.models.QuizQuestion
 import com.example.aistudyassistant.network.ApiService
 import com.example.aistudyassistant.ui.theme.*
+import kotlinx.coroutines.launch
 
 // ── Screen ────────────────────────────────────────────────────────────────────
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun QuizScreen(onBack: () -> Unit, showBackButton: Boolean = true) {
+
+    val context  = LocalContext.current
+    val scope    = rememberCoroutineScope()
+    // Server-assigned user id (null if offline) — scopes quiz generation + result tracking.
+    val serverId = remember { UserManager.getCurrentSession(context)?.serverId }
 
     var isLoading       by remember { mutableStateOf(true) }
     var errorMessage    by remember { mutableStateOf<String?>(null) }
@@ -50,7 +58,7 @@ fun QuizScreen(onBack: () -> Unit, showBackButton: Boolean = true) {
         selectedAnswers = mutableMapOf()
         showResults     = false
 
-        ApiService.generateQuiz()
+        ApiService.generateQuiz(serverId)
             .onSuccess { q ->
                 questions = q
                 isLoading = false
@@ -212,7 +220,16 @@ fun QuizScreen(onBack: () -> Unit, showBackButton: Boolean = true) {
             item {
                 if (!showResults) {
                     Button(
-                        onClick  = { showResults = true },
+                        onClick  = {
+                            showResults = true
+                            // Record the attempt for per-user progress tracking. Skip
+                            // silently when there's no server id (offline / not registered).
+                            serverId?.let { uid ->
+                                scope.launch {
+                                    ApiService.postQuizResult(uid, questions.size, score)
+                                }
+                            }
+                        },
                         enabled  = selectedAnswers.size == questions.size,
                         shape    = RoundedCornerShape(14.dp),
                         colors   = ButtonDefaults.buttonColors(containerColor = BrandViolet),

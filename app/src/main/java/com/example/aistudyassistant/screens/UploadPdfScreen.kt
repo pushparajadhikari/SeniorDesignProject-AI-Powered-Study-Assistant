@@ -25,6 +25,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.aistudyassistant.auth.UserManager
 import com.example.aistudyassistant.network.ApiService
 import com.example.aistudyassistant.ui.theme.*
 import kotlinx.coroutines.delay
@@ -44,6 +45,8 @@ fun UploadPdfScreen(onBack: () -> Unit) {
 
     val context          = LocalContext.current
     val scope            = rememberCoroutineScope()
+    // Server-assigned user id (null if registered offline) — tags the upload as this user's.
+    val serverId         = remember { UserManager.getCurrentSession(context)?.serverId }
     var selectedUri      by remember { mutableStateOf<Uri?>(null) }
     var selectedFileName by remember { mutableStateOf("") }
     var uploadState      by remember { mutableStateOf<UploadState>(UploadState.Idle) }
@@ -86,7 +89,7 @@ fun UploadPdfScreen(onBack: () -> Unit) {
         val uri = selectedUri ?: return
         uploadState = UploadState.Uploading
         scope.launch {
-            ApiService.uploadPdf(context, uri, selectedFileName)
+            ApiService.uploadPdf(context, uri, selectedFileName, serverId)
                 .onSuccess { msg ->
                     uploadState = UploadState.Success(msg)
                     pollUploadProgress()

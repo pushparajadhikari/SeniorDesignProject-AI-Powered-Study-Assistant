@@ -3,6 +3,7 @@ package com.example.aistudyassistant.network
 import android.content.Context
 import android.net.Uri
 import com.example.aistudyassistant.models.QuizQuestion
+import com.example.aistudyassistant.screens.UserProgress
 import com.google.gson.Gson
 import com.google.gson.annotations.SerializedName
 import kotlinx.coroutines.Dispatchers
@@ -32,7 +33,18 @@ object ApiService {
 
     private data class ChatRequest(
         val question: String,
-        @SerializedName("session_id") val sessionId: String? = null
+        @SerializedName("session_id") val sessionId: String? = null,
+        @SerializedName("user_id")    val userId:    Int? = null
+    )
+
+    private data class QuizRequest(
+        @SerializedName("user_id") val userId: Int? = null
+    )
+
+    private data class QuizResultRequest(
+        @SerializedName("user_id")         val userId:  Int,
+        @SerializedName("total_questions") val total:   Int,
+        @SerializedName("correct")         val correct: Int
     )
 
     private data class RegisterRequest(
@@ -129,21 +141,27 @@ object ApiService {
     suspend fun uploadPdf(
         context:  Context,
         uri:      Uri,
-        filename: String
+        filename: String,
+        userId:   Int? = null
     ): Result<String> = withContext(Dispatchers.IO) {
         try {
             val inputStream = context.contentResolver.openInputStream(uri)
                 ?: return@withContext Result.failure(IOException("Cannot open file URI"))
             val bytes = inputStream.use { it.readBytes() }
 
-            val requestBody = MultipartBody.Builder()
+            val multipart = MultipartBody.Builder()
                 .setType(MultipartBody.FORM)
                 .addFormDataPart(
                     name      = "file",
                     filename  = filename,
                     body      = bytes.toRequestBody("application/pdf".toMediaType())
                 )
-                .build()
+            // Only attach user_id when we have a real server id — otherwise the
+            // backend's existing optional handling treats the upload as anonymous.
+            if (userId != null) {
+                multipart.addFormDataPart("user_id", userId.toString())
+            }
+            val requestBody = multipart.build()
 
             val req = Request.Builder()
                 .url("${NetworkConfig.BASE_URL}/upload")
@@ -169,9 +187,10 @@ object ApiService {
      * POST /chat — send a question, get an AI answer + source citation.
      * Returns a [Pair] of (answer text, optional source string like "notes.pdf — Page 3").
      */
-    suspend fun chat(question: String, sessionId: String? = null): Result<Pair<String, String?>> = withContext(Dispatchers.IO) {
+    suspend fun chat(question: String, sessionId: String? = null, userId: Int? = null): Result<Pair<String, String?>> = withContext(Dispatchers.IO) {
         try {
-            val body = gson.toJson(ChatRequest(question, sessionId)).toRequestBody(JSON_MEDIA)
+            // Gson omits null fields by default, so user_id is sent only when present.
+            val body = gson.toJson(ChatRequest(question, sessionId, userId)).toRequestBody(JSON_MEDIA)
             val req  = Request.Builder()
                 .url("${NetworkConfig.BASE_URL}/chat")
                 .post(body)
@@ -197,11 +216,13 @@ object ApiService {
      * POST /quiz — ask the backend to generate 3 multiple-choice questions
      * from the currently indexed documents.
      */
-    suspend fun generateQuiz(): Result<List<QuizQuestion>> = withContext(Dispatchers.IO) {
+    suspend fun generateQuiz(userId: Int? = null): Result<List<QuizQuestion>> = withContext(Dispatchers.IO) {
         try {
+            // Gson omits a null user_id, so this serializes to "{}" when anonymous.
+            val body = gson.toJson(QuizRequest(userId)).toRequestBody(JSON_MEDIA)
             val req = Request.Builder()
                 .url("${NetworkConfig.BASE_URL}/quiz")
-                .post("{}".toRequestBody(JSON_MEDIA))
+                .post(body)
                 .build()
 
             client.newCall(req).execute().use { resp ->
@@ -378,4 +399,57 @@ object ApiService {
                 Result.failure(e)
             }
         }
+
+    /**
+     * POST /quiz-result — record a finished quiz attempt for the given user so the
+     * backend can track running totals shown on the Progress screen.
+     */
+    suspend fun postQuizResult(userId: Int, total: Int, correct: Int): Result<Unit> =
+        withContext(Dispatchers.IO) {
+            try {
+                val body = gson.toJson(QuizResultRequest(userId, total, correct)).toRequestBody(JSON_MEDIA)
+                val req  = Request.Builder()
+                    .url("${NetworkConfig.BASE_URL}/quiz-result")
+                    .post(body)
+                    .build()
+
+                client.newCall(req).execute().use { resp ->
+                    if (resp.isSuccessful) {
+                        Result.success(Unit)
+                    } else {
+                        Result.failure(IOException(
+                            errorDetail(resp.body?.string() ?: "") ?: "Failed to save quiz result (${resp.code})"
+                        ))
+                    }
+                }
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        }
+
+    /**
+     * GET /progress/{user_id} — fetch the user's upload + quiz history.
+     * Parses straight into [UserProgress] (defined in HistoryScreen.kt); the
+     * snake_case → camelCase mapping lives on that model via @SerializedName.
+     */
+    suspend fun getProgress(userId: Int): Result<UserProgress> = withContext(Dispatchers.IO) {
+        try {
+            val req = Request.Builder()
+                .url("${NetworkConfig.BASE_URL}/progress/$userId")
+                .build()
+
+            client.newCall(req).execute().use { resp ->
+                val respBody = resp.body?.string() ?: ""
+                if (resp.isSuccessful) {
+                    Result.success(gson.fromJson(respBody, UserProgress::class.java))
+                } else {
+                    Result.failure(IOException(
+                        errorDetail(respBody) ?: "Failed to load progress (${resp.code})"
+                    ))
+                }
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
 }
