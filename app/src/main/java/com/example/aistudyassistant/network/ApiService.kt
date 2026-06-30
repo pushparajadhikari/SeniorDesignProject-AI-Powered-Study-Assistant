@@ -35,7 +35,37 @@ object ApiService {
         @SerializedName("session_id") val sessionId: String? = null
     )
 
+    private data class RegisterRequest(
+        val name:     String,
+        val email:    String,
+        val password: String
+    )
+
+    private data class LoginRequest(
+        val email:    String,
+        val password: String
+    )
+
     // ── Private response DTOs ─────────────────────────────────────────────────
+
+    /** The user object the backend nests under "user" on successful auth. */
+    private data class AuthUserDto(
+        val id:    Int,
+        val name:  String? = null,
+        val email: String? = null
+    )
+
+    private data class RegisterResponse(
+        val success: Boolean = false,
+        val user:    AuthUserDto? = null,
+        val message: String? = null
+    )
+
+    private data class LoginResponse(
+        val success: Boolean = false,
+        val user:    AuthUserDto? = null,
+        val message: String? = null
+    )
 
     private data class UploadResponse(
         val success:  Boolean,
@@ -277,4 +307,75 @@ object ApiService {
             Result.failure(e)
         }
     }
+
+    /**
+     * POST /register — create a server-side account.
+     * On success the backend returns {"success": true, "user": {"id": ..., ...}};
+     * returns the server-assigned integer user id. On failure (e.g. HTTP 400 for a
+     * duplicate email) returns the server's "message" as the failure reason.
+     *
+     * Connectivity failures propagate as the original exception so callers can tell
+     * "server rejected us" apart from "couldn't reach the server".
+     */
+    suspend fun register(name: String, email: String, password: String): Result<Int> =
+        withContext(Dispatchers.IO) {
+            try {
+                val body = gson.toJson(RegisterRequest(name, email, password)).toRequestBody(JSON_MEDIA)
+                val req  = Request.Builder()
+                    .url("${NetworkConfig.BASE_URL}/register")
+                    .post(body)
+                    .build()
+
+                client.newCall(req).execute().use { resp ->
+                    val respBody = resp.body?.string() ?: ""
+                    val parsed   = try {
+                        gson.fromJson(respBody, RegisterResponse::class.java)
+                    } catch (_: Exception) { null }
+
+                    if (resp.isSuccessful && parsed?.success == true && parsed.user != null) {
+                        Result.success(parsed.user.id)
+                    } else {
+                        Result.failure(IOException(
+                            parsed?.message ?: errorDetail(respBody) ?: "Registration failed (${resp.code})"
+                        ))
+                    }
+                }
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        }
+
+    /**
+     * POST /login — authenticate against the backend.
+     * On success returns the server-assigned integer user id. On HTTP 401 / any
+     * failure returns the server's "message" if present, otherwise a generic
+     * "Invalid email or password".
+     */
+    suspend fun login(email: String, password: String): Result<Int> =
+        withContext(Dispatchers.IO) {
+            try {
+                val body = gson.toJson(LoginRequest(email, password)).toRequestBody(JSON_MEDIA)
+                val req  = Request.Builder()
+                    .url("${NetworkConfig.BASE_URL}/login")
+                    .post(body)
+                    .build()
+
+                client.newCall(req).execute().use { resp ->
+                    val respBody = resp.body?.string() ?: ""
+                    val parsed   = try {
+                        gson.fromJson(respBody, LoginResponse::class.java)
+                    } catch (_: Exception) { null }
+
+                    if (resp.isSuccessful && parsed?.success == true && parsed.user != null) {
+                        Result.success(parsed.user.id)
+                    } else {
+                        Result.failure(IOException(
+                            parsed?.message ?: errorDetail(respBody) ?: "Invalid email or password"
+                        ))
+                    }
+                }
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        }
 }

@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.aistudyassistant.auth.UserManager
 import com.example.aistudyassistant.ui.theme.*
+import kotlinx.coroutines.launch
 
 @Composable
 fun SignupScreen(
@@ -33,6 +34,7 @@ fun SignupScreen(
     onBack:          () -> Unit
 ) {
     val context = LocalContext.current
+    val scope   = rememberCoroutineScope()
 
     var name            by remember { mutableStateOf("") }
     var email           by remember { mutableStateOf("") }
@@ -176,12 +178,16 @@ fun SignupScreen(
                             }
                             if (errorMessage.isEmpty()) {
                                 isLoading = true
-                                val error = UserManager.register(context, name.trim(), email.trim(), password)
-                                if (error == null) {
-                                    onSignupSuccess()
-                                } else {
-                                    errorMessage = error
-                                    isLoading    = false
+                                scope.launch {
+                                    val error = UserManager.registerWithServer(
+                                        context, name.trim(), email.trim(), password
+                                    )
+                                    if (error == null) {
+                                        onSignupSuccess()
+                                    } else {
+                                        errorMessage = error
+                                        isLoading    = false
+                                    }
                                 }
                             }
                         },
