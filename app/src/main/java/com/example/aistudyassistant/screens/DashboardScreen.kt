@@ -50,7 +50,7 @@ fun DashboardScreen(
         // Run health-check and docs-list concurrently
         serverOnline = ApiService.checkHealth()
         if (serverOnline == true) {
-            ApiService.getDocsList()
+            ApiService.getDocsList(userId = session?.serverId)
                 .onSuccess { docs = it }
                 .onFailure { /* keep previous list */ }
         }

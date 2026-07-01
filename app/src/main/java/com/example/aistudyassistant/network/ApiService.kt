@@ -250,11 +250,18 @@ object ApiService {
     }
 
     /**
-     * GET /docs-list — returns list of indexed PDF filenames.
+     * GET /docs-list — returns list of indexed PDF filenames. When [userId] is
+     * provided, returns only that user's uploads; otherwise falls back to the
+     * anonymous/global list.
      */
-    suspend fun getDocsList(): Result<List<String>> = withContext(Dispatchers.IO) {
+    suspend fun getDocsList(userId: Int? = null): Result<List<String>> = withContext(Dispatchers.IO) {
         try {
-            val req = Request.Builder().url("${NetworkConfig.BASE_URL}/docs-list").build()
+            val url = if (userId != null) {
+                "${NetworkConfig.BASE_URL}/docs-list?user_id=$userId"
+            } else {
+                "${NetworkConfig.BASE_URL}/docs-list"
+            }
+            val req = Request.Builder().url(url).build()
             client.newCall(req).execute().use { resp ->
                 val respBody = resp.body?.string() ?: ""
                 if (resp.isSuccessful) {
@@ -269,12 +276,18 @@ object ApiService {
     }
 
     /**
-     * DELETE /docs/{filename} — remove a document and all its chunks from the index.
+     * DELETE /docs/{filename} — remove a document and all its chunks from the
+     * index. When [userId] is provided the delete is scoped to that user's
+     * collection; without it, the global collection is used.
      */
-    suspend fun deleteDoc(filename: String): Result<Unit> = withContext(Dispatchers.IO) {
+    suspend fun deleteDoc(filename: String, userId: Int? = null): Result<Unit> = withContext(Dispatchers.IO) {
         try {
+            val url = buildString {
+                append("${NetworkConfig.BASE_URL}/docs/${Uri.encode(filename)}")
+                if (userId != null) append("?user_id=$userId")
+            }
             val req = Request.Builder()
-                .url("${NetworkConfig.BASE_URL}/docs/${Uri.encode(filename)}")
+                .url(url)
                 .delete()
                 .build()
             client.newCall(req).execute().use { resp ->
