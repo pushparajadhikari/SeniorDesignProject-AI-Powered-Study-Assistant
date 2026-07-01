@@ -38,7 +38,8 @@ object ApiService {
     )
 
     private data class QuizRequest(
-        @SerializedName("user_id") val userId: Int? = null
+        @SerializedName("user_id")       val userId:       Int? = null,
+        @SerializedName("num_questions") val numQuestions: Int  = 5
     )
 
     private data class QuizResultRequest(
@@ -213,13 +214,14 @@ object ApiService {
     }
 
     /**
-     * POST /quiz — ask the backend to generate 3 multiple-choice questions
-     * from the currently indexed documents.
+     * POST /quiz — ask the backend to generate [numQuestions] multiple-choice
+     * questions from the currently indexed documents. Backend clamps the
+     * count to [1, 20].
      */
-    suspend fun generateQuiz(userId: Int? = null): Result<List<QuizQuestion>> = withContext(Dispatchers.IO) {
+    suspend fun generateQuiz(userId: Int? = null, numQuestions: Int = 5): Result<List<QuizQuestion>> = withContext(Dispatchers.IO) {
         try {
-            // Gson omits a null user_id, so this serializes to "{}" when anonymous.
-            val body = gson.toJson(QuizRequest(userId)).toRequestBody(JSON_MEDIA)
+            // Gson omits a null user_id, so anonymous callers send only num_questions.
+            val body = gson.toJson(QuizRequest(userId, numQuestions)).toRequestBody(JSON_MEDIA)
             val req = Request.Builder()
                 .url("${NetworkConfig.BASE_URL}/quiz")
                 .post(body)

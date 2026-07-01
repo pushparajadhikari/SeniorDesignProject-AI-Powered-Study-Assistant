@@ -46,19 +46,20 @@ fun QuizScreen(onBack: () -> Unit, showBackButton: Boolean = true) {
     var selectedAnswers by remember { mutableStateOf(mutableMapOf<Int, Int>()) }
     var showResults     by remember { mutableStateOf(false) }
     var refreshKey      by remember { mutableStateOf(0) }   // increment to reload
+    var numQuestions    by remember { mutableStateOf(5) }   // backend clamps to [1, 20]
 
     val score = selectedAnswers.entries.count { (qi, ai) ->
         questions.getOrNull(qi)?.correctIndex == ai
     }
 
-    // Fetch questions from the backend whenever refreshKey changes
-    LaunchedEffect(refreshKey) {
+    // Regenerate whenever refresh is tapped or the user picks a different count.
+    LaunchedEffect(refreshKey, numQuestions) {
         isLoading       = true
         errorMessage    = null
         selectedAnswers = mutableMapOf()
         showResults     = false
 
-        ApiService.generateQuiz(serverId)
+        ApiService.generateQuiz(serverId, numQuestions)
             .onSuccess { q ->
                 questions = q
                 isLoading = false
@@ -104,16 +105,28 @@ fun QuizScreen(onBack: () -> Unit, showBackButton: Boolean = true) {
 
         // ── Loading ───────────────────────────────────────────────────────
         if (isLoading) {
-            Box(
-                modifier         = Modifier.fillMaxSize().padding(padding),
-                contentAlignment = Alignment.Center
+            Column(
+                modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp)
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    CircularProgressIndicator(color = BrandViolet)
-                    Spacer(Modifier.height(16.dp))
-                    Text("Generating quiz from your notes…", color = TextSecondary, fontSize = 14.sp)
-                    Spacer(Modifier.height(4.dp))
-                    Text("This may take up to a minute.", fontSize = 12.sp, color = TextSecondary)
+                QuestionCountPicker(
+                    current  = numQuestions,
+                    onSelect = { numQuestions = it }
+                )
+                Box(
+                    modifier         = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        CircularProgressIndicator(color = BrandViolet)
+                        Spacer(Modifier.height(16.dp))
+                        Text(
+                            "Generating $numQuestions questions from your notes…",
+                            color    = TextSecondary,
+                            fontSize = 14.sp
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text("This may take up to a minute.", fontSize = 12.sp, color = TextSecondary)
+                    }
                 }
             }
             return@Scaffold
@@ -121,35 +134,43 @@ fun QuizScreen(onBack: () -> Unit, showBackButton: Boolean = true) {
 
         // ── Error ─────────────────────────────────────────────────────────
         if (errorMessage != null) {
-            Box(
-                modifier         = Modifier.fillMaxSize().padding(padding).padding(24.dp),
-                contentAlignment = Alignment.Center
+            Column(
+                modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp)
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("⚠️", fontSize = 48.sp)
-                    Spacer(Modifier.height(16.dp))
-                    Text(
-                        "Could not generate quiz",
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize   = 18.sp,
-                        color      = TextPrimary
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        errorMessage ?: "",
-                        fontSize  = 13.sp,
-                        color     = TextSecondary,
-                        textAlign = TextAlign.Center
-                    )
-                    Spacer(Modifier.height(24.dp))
-                    Button(
-                        onClick = { refreshKey++ },
-                        shape   = RoundedCornerShape(12.dp),
-                        colors  = ButtonDefaults.buttonColors(containerColor = BrandViolet)
-                    ) {
-                        Icon(Icons.Default.Refresh, null, tint = Color.White)
-                        Spacer(Modifier.width(8.dp))
-                        Text("Try Again", color = Color.White)
+                QuestionCountPicker(
+                    current  = numQuestions,
+                    onSelect = { numQuestions = it }
+                )
+                Box(
+                    modifier         = Modifier.fillMaxSize().padding(top = 8.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("⚠️", fontSize = 48.sp)
+                        Spacer(Modifier.height(16.dp))
+                        Text(
+                            "Could not generate quiz",
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize   = 18.sp,
+                            color      = TextPrimary
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            errorMessage ?: "",
+                            fontSize  = 13.sp,
+                            color     = TextSecondary,
+                            textAlign = TextAlign.Center
+                        )
+                        Spacer(Modifier.height(24.dp))
+                        Button(
+                            onClick = { refreshKey++ },
+                            shape   = RoundedCornerShape(12.dp),
+                            colors  = ButtonDefaults.buttonColors(containerColor = BrandViolet)
+                        ) {
+                            Icon(Icons.Default.Refresh, null, tint = Color.White)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Try Again", color = Color.White)
+                        }
                     }
                 }
             }
@@ -162,6 +183,14 @@ fun QuizScreen(onBack: () -> Unit, showBackButton: Boolean = true) {
             contentPadding      = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+
+            item {
+                QuestionCountPicker(
+                    current  = numQuestions,
+                    onSelect = { numQuestions = it }
+                )
+            }
+
 
             // Score banner (shown after submit)
             if (showResults) {
@@ -383,6 +412,56 @@ fun QuizCard(
                         "💡 ${question.explanation}",
                         fontSize = 13.sp,
                         color    = BrandBlue
+                    )
+                }
+            }
+        }
+    }
+}
+
+// ── Question-count picker ─────────────────────────────────────────────────────
+
+/**
+ * Row of preset chips (3/5/10/15/20) for choosing how many questions to
+ * generate. Backend clamps to [1, 20], so these presets are within range.
+ * Tapping a preset invokes [onSelect]; the caller decides whether that
+ * triggers regeneration.
+ */
+@Composable
+private fun QuestionCountPicker(
+    current:  Int,
+    onSelect: (Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val presets = listOf(3, 5, 10, 15, 20)
+    Column(modifier = modifier.fillMaxWidth()) {
+        Text(
+            "Number of questions",
+            fontSize   = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            color      = TextSecondary
+        )
+        Spacer(Modifier.height(8.dp))
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier              = Modifier.fillMaxWidth()
+        ) {
+            presets.forEach { n ->
+                val selected = n == current
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(if (selected) BrandViolet else Color(0xFFF1F3F5))
+                        .clickable { if (!selected) onSelect(n) }
+                        .padding(vertical = 10.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        "$n",
+                        color      = if (selected) Color.White else TextPrimary,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize   = 14.sp
                     )
                 }
             }
