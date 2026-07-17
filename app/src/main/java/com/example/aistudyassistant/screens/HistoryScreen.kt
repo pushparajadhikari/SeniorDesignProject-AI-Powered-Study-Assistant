@@ -20,6 +20,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.aistudyassistant.network.ApiService
+import com.example.aistudyassistant.ui.animation.CountUpText
 import com.example.aistudyassistant.ui.components.BrandLogoMark
 import com.example.aistudyassistant.ui.theme.*
 import com.google.gson.annotations.SerializedName
@@ -30,10 +31,12 @@ import com.google.gson.annotations.SerializedName
 // partial/empty response from the backend deserializes without crashing.
 
 data class UserProgress(
-    @SerializedName("pdfs_uploaded")            val pdfsUploaded:           List<PdfUpload>  = emptyList(),
-    @SerializedName("quiz_history")             val quizHistory:            List<QuizResult> = emptyList(),
-    @SerializedName("questions_answered_total") val questionsAnsweredTotal: Int = 0,
-    @SerializedName("questions_correct_total")  val questionsCorrectTotal:  Int = 0
+    @SerializedName("pdfs_uploaded")             val pdfsUploaded:            List<PdfUpload>  = emptyList(),
+    @SerializedName("quiz_history")              val quizHistory:             List<QuizResult> = emptyList(),
+    @SerializedName("questions_answered_total")  val questionsAnsweredTotal:  Int = 0,
+    @SerializedName("questions_correct_total")   val questionsCorrectTotal:   Int = 0,
+    @SerializedName("flashcards_revealed_total") val flashcardsRevealedTotal: Int = 0,
+    @SerializedName("flashcard_sets")            val flashcardSets:           Int = 0
 )
 
 data class PdfUpload(
@@ -192,6 +195,11 @@ fun HistoryScreen(userId: Int?) {
                         SummaryStat("${data.pdfsUploaded.size}", "PDFs", BrandTeal)
                         SummaryStat("${data.quizHistory.size}", "Quizzes", BrandBlue)
                         SummaryStat("$accuracy%", "Accuracy", BrandViolet)
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            CountUpText(targetValue = data.flashcardsRevealedTotal, fontSize = 22.sp, color = AccentGreen)
+                            Spacer(Modifier.height(2.dp))
+                            Text("Answers Revealed", fontSize = 12.sp, color = TextSecondary)
+                        }
                     }
                 }
             }
