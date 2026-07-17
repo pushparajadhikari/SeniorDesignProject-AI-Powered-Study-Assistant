@@ -95,5 +95,13 @@ fun AppNavigation() {
         composable("upload") {
             UploadPdfScreen(onBack = { navController.popBackStack() })
         }
+
+        // ── Flashcards (Home -> pick PDF -> pick count -> generate -> reveal) ─
+        composable("flashcards") {
+            FlashcardScreen(
+                onBack        = { navController.popBackStack() },
+                onUploadClick = { navController.navigate("upload") }
+            )
+        }
     }
 }
