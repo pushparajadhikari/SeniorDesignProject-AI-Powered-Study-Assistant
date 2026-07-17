@@ -2,6 +2,7 @@ package com.example.aistudyassistant.auth
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.example.aistudyassistant.network.ApiService
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 
@@ -12,13 +13,15 @@ data class User(
     val name:         String,
     val email:        String,
     val passwordHash: String,   // simple hash — never store plain text
+    val serverId:     Int? = null,  // backend-assigned integer id (null if registered offline)
     val createdAt:    Long = System.currentTimeMillis()
 )
 
 data class UserSession(
     val userId:    String,
     val userEmail: String,
-    val userName:  String
+    val userName:  String,
+    val serverId:  Int? = null   // backend user id — use this for per-user API calls, NOT userId
 )
 
 // ── UserManager singleton ─────────────────────────────────────────────────────
@@ -101,6 +104,105 @@ object UserManager {
         saveSession(ctx, UserSession(user.id, user.email, user.name))
         return null
     }
+
+    // ── Server-backed auth ──────────────────────────────────────────────────────
+    // These talk to the backend first, then mirror into local SharedPreferences so
+    // offline auth keeps working as a fallback. The server-assigned integer id is
+    // stored on both the User record and the active UserSession (as serverId).
+
+    /**
+     * Registers against the backend, then mirrors the account locally.
+     * Returns null on success, or an error message string on failure.
+     *
+     * - Server accepts → mirror locally + stamp serverId onto user & session.
+     * - Server rejects (e.g. duplicate email) → return its message; no fallback.
+     * - Server unreachable (no network) → fall back to local-only register(),
+     *   leaving serverId null so the app still works offline.
+     */
+    suspend fun registerWithServer(ctx: Context, name: String, email: String, password: String): String? {
+        val result = ApiService.register(name.trim(), email.trim(), password)
+
+        result.onSuccess { serverId ->
+            // Mirror into local SharedPreferences. If the account already exists
+            // locally this returns an error we can safely ignore — the server is the
+            // source of truth, and upsertServerId still produces a valid session.
+            register(ctx, name, email, password)
+            upsertServerId(ctx, email, serverId)
+            return null
+        }
+
+        val error = result.exceptionOrNull()
+        return if (error != null && isConnectivityError(error)) {
+            register(ctx, name, email, password)   // local-only, serverId stays null
+        } else {
+            error?.message ?: "Registration failed"
+        }
+    }
+
+    /**
+     * Authenticates against the backend, then mirrors the session locally.
+     * Returns null on success, or an error message string on failure.
+     *
+     * - Server accepts → ensure a local session exists + stamp serverId onto it.
+     * - Server rejects → return its message.
+     * - Server unreachable → fall back to local login().
+     */
+    suspend fun loginWithServer(ctx: Context, email: String, password: String): String? {
+        val result = ApiService.login(email.trim(), password)
+
+        result.onSuccess { serverId ->
+            // Establish a local session for offline fallback when the local mirror
+            // exists; upsertServerId guarantees a session even if it doesn't.
+            login(ctx, email, password)
+            upsertServerId(ctx, email, serverId)
+            return null
+        }
+
+        val error = result.exceptionOrNull()
+        return if (error != null && isConnectivityError(error)) {
+            login(ctx, email, password)            // local fallback
+        } else {
+            error?.message ?: "Invalid email or password"
+        }
+    }
+
+    /**
+     * Stamps [serverId] onto the stored User record and the active UserSession for
+     * [email], creating a session if none exists yet (e.g. fresh install where the
+     * account lives only on the server).
+     */
+    private fun upsertServerId(ctx: Context, email: String, serverId: Int) {
+        val normalizedEmail = email.trim().lowercase()
+
+        val users   = getAllUsers(ctx)
+        val userIdx = users.indexOfFirst { it.email == normalizedEmail }
+        val userName: String
+        val localId:  String
+        if (userIdx != -1) {
+            users[userIdx] = users[userIdx].copy(serverId = serverId)
+            saveAllUsers(ctx, users)
+            userName = users[userIdx].name
+            localId  = users[userIdx].id
+        } else {
+            userName = normalizedEmail.substringBefore("@")
+            localId  = java.util.UUID.randomUUID().toString()
+        }
+
+        val current = getCurrentSession(ctx)
+        val session = if (current != null && current.userEmail == normalizedEmail) {
+            current.copy(serverId = serverId)
+        } else {
+            UserSession(localId, normalizedEmail, userName, serverId)
+        }
+        saveSession(ctx, session)
+    }
+
+    /** True for failures that mean "couldn't reach the backend" (vs. a rejection). */
+    private fun isConnectivityError(e: Throwable): Boolean =
+        e is java.net.ConnectException ||
+        e is java.net.UnknownHostException ||
+        e is java.net.SocketTimeoutException ||
+        e is java.net.SocketException
 
     fun logout(ctx: Context) {
         sessionPrefs(ctx).edit().remove(KEY_SESSION_JSON).apply()

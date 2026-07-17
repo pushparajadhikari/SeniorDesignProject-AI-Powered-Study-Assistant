@@ -27,11 +27,7 @@ import java.util.Calendar
 
 @Composable
 fun DashboardScreen(
-    onUploadClick:  () -> Unit,
-    onChatClick:    () -> Unit,
-    onQuizClick:    () -> Unit,
-    onProfileClick: () -> Unit,
-    onLogout:       () -> Unit
+    onProfileClick: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val session = UserManager.getCurrentSession(context)
@@ -55,7 +51,7 @@ fun DashboardScreen(
         // Run health-check and docs-list concurrently
         serverOnline = ApiService.checkHealth()
         if (serverOnline == true) {
-            ApiService.getDocsList()
+            ApiService.getDocsList(userId = session?.serverId)
                 .onSuccess { docs = it }
                 .onFailure { /* keep previous list */ }
         }
@@ -131,47 +127,6 @@ fun DashboardScreen(
                         StatChip("Quiz", "🎯")
                     }
                 }
-            }
-        }
-
-        // ── Quick actions ─────────────────────────────────────────────────
-        item {
-            Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 20.dp)) {
-
-                Text("Quick Actions", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
-                Spacer(Modifier.height(12.dp))
-
-                Row(
-                    modifier              = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    ActionCard(
-                        title    = "Upload PDF",
-                        subtitle = "Add study material",
-                        emoji    = "📄",
-                        color    = BrandTeal,
-                        onClick  = onUploadClick,
-                        modifier = Modifier.weight(1f)
-                    )
-                    ActionCard(
-                        title    = "Ask AI",
-                        subtitle = "Chat with your notes",
-                        emoji    = "💬",
-                        color    = BrandBlue,
-                        onClick  = onChatClick,
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-
-                Spacer(Modifier.height(12.dp))
-
-                ActionCardWide(
-                    title    = "Generate Quiz",
-                    subtitle = "Test yourself on your uploaded material",
-                    emoji    = "🎯",
-                    color    = BrandViolet,
-                    onClick  = onQuizClick
-                )
             }
         }
 
@@ -336,60 +291,6 @@ fun StatChip(label: String, icon: String) {
     ) {
         Text(icon, fontSize = 13.sp)
         Text(label, fontSize = 12.sp, color = Color.White, fontWeight = FontWeight.Medium)
-    }
-}
-
-@Composable
-fun ActionCard(
-    title:    String,
-    subtitle: String,
-    emoji:    String,
-    color:    Color,
-    onClick:  () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Card(
-        onClick   = onClick,
-        shape     = RoundedCornerShape(20.dp),
-        colors    = CardDefaults.cardColors(containerColor = Color.White),
-        modifier  = modifier.height(130.dp),
-        elevation = CardDefaults.cardElevation(2.dp)
-    ) {
-        Column(
-            modifier            = Modifier.fillMaxSize().padding(16.dp),
-            verticalArrangement = Arrangement.SpaceBetween
-        ) {
-            Box(
-                modifier         = Modifier.size(40.dp).clip(RoundedCornerShape(10.dp)).background(color.copy(alpha = 0.12f)),
-                contentAlignment = Alignment.Center
-            ) { Text(emoji, fontSize = 20.sp) }
-            Column {
-                Text(title, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
-                Text(subtitle, fontSize = 11.sp, color = TextSecondary)
-            }
-        }
-    }
-}
-
-@Composable
-fun ActionCardWide(title: String, subtitle: String, emoji: String, color: Color, onClick: () -> Unit) {
-    Card(
-        onClick   = onClick,
-        shape     = RoundedCornerShape(20.dp),
-        colors    = CardDefaults.cardColors(containerColor = color),
-        modifier  = Modifier.fillMaxWidth(),
-        elevation = CardDefaults.cardElevation(2.dp)
-    ) {
-        Row(modifier = Modifier.padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(emoji, fontSize = 36.sp)
-            Spacer(Modifier.width(16.dp))
-            Column {
-                Text(title, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                Text(subtitle, fontSize = 13.sp, color = Color.White.copy(alpha = 0.85f))
-            }
-            Spacer(Modifier.weight(1f))
-            Icon(Icons.Default.ChevronRight, null, tint = Color.White)
-        }
     }
 }
 
