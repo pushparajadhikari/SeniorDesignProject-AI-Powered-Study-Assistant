@@ -39,9 +39,10 @@ private enum class MainTab(val label: String, val icon: ImageVector) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScaffold(
-    onUploadClick:  () -> Unit,
-    onLogout:       () -> Unit,
-    onHistoryClick: () -> Unit = {}
+    onUploadClick:     () -> Unit,
+    onLogout:          () -> Unit,
+    onHistoryClick:    () -> Unit = {},
+    onFlashcardsClick: () -> Unit = {}
 ) {
     val context     = LocalContext.current
     var selectedTab by remember { mutableStateOf(MainTab.HOME) }
@@ -88,7 +89,7 @@ fun MainScaffold(
         // content sits above the bottom navigation bar.
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
             when (selectedTab) {
-                MainTab.HOME     -> DashboardScreen(onProfileClick = { selectedTab = MainTab.PROFILE })
+                MainTab.HOME     -> DashboardScreen(onProfileClick = { selectedTab = MainTab.PROFILE }, onFlashcardsClick = onFlashcardsClick)
                 MainTab.CHAT     -> ChatScreen(onBack = {}, onHistory = onHistoryClick, showBackButton = false)
                 MainTab.QUIZ     -> QuizScreen(onBack = {}, showBackButton = false, onUploadClick = onUploadClick)
                 MainTab.PROGRESS -> HistoryScreen(userId = serverId)

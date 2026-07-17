@@ -1,14 +1,17 @@
 package com.example.aistudyassistant.screens
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -23,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.aistudyassistant.auth.UserManager
 import com.example.aistudyassistant.network.ApiService
+import com.example.aistudyassistant.ui.animation.pressScale
 import com.example.aistudyassistant.ui.components.BrandLogoBadge
 import com.example.aistudyassistant.ui.components.DestructiveConfirmDialog
 import com.example.aistudyassistant.ui.theme.*
@@ -33,7 +37,8 @@ import java.util.Calendar
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun DashboardScreen(
-    onProfileClick: () -> Unit = {}
+    onProfileClick:    () -> Unit = {},
+    onFlashcardsClick: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val scope   = rememberCoroutineScope()
@@ -171,6 +176,13 @@ fun DashboardScreen(
                         StatChip("Quiz", "🎯")
                     }
                 }
+            }
+        }
+
+        // ── Flashcards entry point ────────────────────────────────────────
+        item {
+            Box(modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp)) {
+                FlashcardsEntryCard(onClick = onFlashcardsClick)
             }
         }
 
@@ -355,6 +367,42 @@ fun StatChip(label: String, icon: String) {
     ) {
         Text(icon, fontSize = 13.sp)
         Text(label, fontSize = 12.sp, color = Color.White, fontWeight = FontWeight.Medium)
+    }
+}
+
+/** Home entry point into the flashcard flow — matches HowItWorksCard's card styling. */
+@Composable
+fun FlashcardsEntryCard(onClick: () -> Unit) {
+    val interactionSource = remember { MutableInteractionSource() }
+    Card(
+        shape     = RoundedCornerShape(16.dp),
+        colors    = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(1.dp),
+        modifier  = Modifier
+            .fillMaxWidth()
+            .combinedClickable(interactionSource = interactionSource, indication = LocalIndication.current) { onClick() }
+            .pressScale(interactionSource)
+    ) {
+        Row(
+            modifier          = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Brush.linearGradient(listOf(GradientStart, GradientEnd))),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("🗂️", fontSize = 20.sp)
+            }
+            Spacer(Modifier.width(14.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Flashcards", fontWeight = FontWeight.SemiBold, fontSize = 15.sp, color = TextPrimary)
+                Text("Quiz yourself, Quizlet-style", fontSize = 12.sp, color = TextSecondary)
+            }
+            Icon(Icons.AutoMirrored.Filled.ArrowForwardIos, null, tint = Color.LightGray, modifier = Modifier.size(14.dp))
+        }
     }
 }
 

@@ -84,9 +84,10 @@ fun AppNavigation() {
             }
 
             MainScaffold(
-                onUploadClick  = { navController.navigate("upload") },
-                onHistoryClick = { navController.navigate("history") },
-                onLogout       = {
+                onUploadClick     = { navController.navigate("upload") },
+                onHistoryClick    = { navController.navigate("history") },
+                onFlashcardsClick = { navController.navigate("flashcards") },
+                onLogout          = {
                     // Capture before UserManager.logout() clears the session, then wipe
                     // all three places a previous user's chat could linger: the local
                     // JSON, this composable subtree (destroyed by popUpTo below), and
