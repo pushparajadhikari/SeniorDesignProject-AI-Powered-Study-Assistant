@@ -371,6 +371,7 @@ fun StatChip(label: String, icon: String) {
 }
 
 /** Home entry point into the flashcard flow — matches HowItWorksCard's card styling. */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun FlashcardsEntryCard(onClick: () -> Unit) {
     val interactionSource = remember { MutableInteractionSource() }
