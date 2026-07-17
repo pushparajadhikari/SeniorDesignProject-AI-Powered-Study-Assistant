@@ -89,7 +89,7 @@ fun MainScaffold(
             when (selectedTab) {
                 MainTab.HOME     -> DashboardScreen(onProfileClick = { selectedTab = MainTab.PROFILE })
                 MainTab.CHAT     -> ChatScreen(onBack = {}, showBackButton = false)
-                MainTab.QUIZ     -> QuizScreen(onBack = {}, showBackButton = false)
+                MainTab.QUIZ     -> QuizScreen(onBack = {}, showBackButton = false, onUploadClick = onUploadClick)
                 MainTab.PROGRESS -> HistoryScreen(userId = serverId)
                 MainTab.PROFILE  -> ProfileScreen(onBack = {}, onLogout = onLogout, showBackButton = false)
             }

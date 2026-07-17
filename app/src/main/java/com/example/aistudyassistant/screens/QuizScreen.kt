@@ -27,6 +27,8 @@ import com.example.aistudyassistant.auth.UserManager
 import com.example.aistudyassistant.models.QuizQuestion
 import com.example.aistudyassistant.network.ApiService
 import com.example.aistudyassistant.ui.components.BrandLogoMark
+import com.example.aistudyassistant.ui.components.PdfSource
+import com.example.aistudyassistant.ui.components.PdfSourcePicker
 import com.example.aistudyassistant.ui.theme.*
 import kotlinx.coroutines.launch
 
@@ -34,33 +36,37 @@ import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun QuizScreen(onBack: () -> Unit, showBackButton: Boolean = true) {
+fun QuizScreen(onBack: () -> Unit, showBackButton: Boolean = true, onUploadClick: () -> Unit = {}) {
 
     val context  = LocalContext.current
     val scope    = rememberCoroutineScope()
     // Server-assigned user id (null if offline) — scopes quiz generation + result tracking.
     val serverId = remember { UserManager.getCurrentSession(context)?.serverId }
 
-    var isLoading       by remember { mutableStateOf(true) }
-    var errorMessage    by remember { mutableStateOf<String?>(null) }
-    var questions       by remember { mutableStateOf<List<QuizQuestion>>(emptyList()) }
-    var selectedAnswers by remember { mutableStateOf(mutableMapOf<Int, Int>()) }
-    var showResults     by remember { mutableStateOf(false) }
-    var refreshKey      by remember { mutableStateOf(0) }   // increment to reload
-    var numQuestions    by remember { mutableStateOf(5) }   // backend clamps to [1, 20]
+    // Null until the user picks a source — both flows start with "which PDF?".
+    var pdfSource        by remember { mutableStateOf<PdfSource?>(null) }
+    var isLoading        by remember { mutableStateOf(true) }
+    var errorMessage     by remember { mutableStateOf<String?>(null) }
+    var questions        by remember { mutableStateOf<List<QuizQuestion>>(emptyList()) }
+    var selectedAnswers  by remember { mutableStateOf(mutableMapOf<Int, Int>()) }
+    var showResults      by remember { mutableStateOf(false) }
+    var refreshKey       by remember { mutableStateOf(0) }   // increment to reload
+    var numQuestions     by remember { mutableStateOf(5) }   // backend clamps to [1, 20]
 
     val score = selectedAnswers.entries.count { (qi, ai) ->
         questions.getOrNull(qi)?.correctIndex == ai
     }
 
-    // Regenerate whenever refresh is tapped or the user picks a different count.
-    LaunchedEffect(refreshKey, numQuestions) {
+    // Regenerate whenever refresh is tapped, the count changes, or the source changes.
+    LaunchedEffect(pdfSource, refreshKey, numQuestions) {
+        val source = pdfSource ?: return@LaunchedEffect
         isLoading       = true
         errorMessage    = null
         selectedAnswers = mutableMapOf()
         showResults     = false
 
-        ApiService.generateQuiz(serverId, numQuestions)
+        val sourceFilename = (source as? PdfSource.Specific)?.filename
+        ApiService.generateQuiz(serverId, numQuestions, sourceFilename)
             .onSuccess { q ->
                 questions = q
                 isLoading = false
@@ -69,6 +75,12 @@ fun QuizScreen(onBack: () -> Unit, showBackButton: Boolean = true) {
                 errorMessage = err.message ?: "Quiz generation failed"
                 isLoading    = false
             }
+    }
+
+    val sourceLabel = when (val s = pdfSource) {
+        null                      -> "From your notes"
+        PdfSource.AllDocuments    -> "All documents"
+        is PdfSource.Specific     -> s.filename
     }
 
     Scaffold(
@@ -80,7 +92,7 @@ fun QuizScreen(onBack: () -> Unit, showBackButton: Boolean = true) {
                         Spacer(Modifier.width(10.dp))
                         Column {
                             Text("Quiz", fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
-                            Text("From your notes", fontSize = 11.sp, color = TextSecondary)
+                            Text(sourceLabel, fontSize = 11.sp, color = TextSecondary, maxLines = 1)
                         }
                     }
                 },
@@ -92,9 +104,14 @@ fun QuizScreen(onBack: () -> Unit, showBackButton: Boolean = true) {
                     }
                 },
                 actions = {
+                    if (pdfSource != null) {
+                        TextButton(onClick = { pdfSource = null }) {
+                            Text("Change", color = BrandViolet, fontSize = 13.sp)
+                        }
+                    }
                     IconButton(
                         onClick  = { refreshKey++ },
-                        enabled  = !isLoading
+                        enabled  = !isLoading && pdfSource != null
                     ) {
                         Icon(Icons.Default.Refresh, "Regenerate quiz", tint = BrandTeal)
                     }
@@ -107,6 +124,20 @@ fun QuizScreen(onBack: () -> Unit, showBackButton: Boolean = true) {
         },
         containerColor = SurfaceLight
     ) { padding ->
+
+        // ── Choose a source (first step) ────────────────────────────────────
+        if (pdfSource == null) {
+            Column(modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp)) {
+                PdfSourcePicker(
+                    userId        = serverId,
+                    selected      = pdfSource,
+                    onSelect      = { pdfSource = it },
+                    onUploadClick = onUploadClick,
+                    accentColor   = BrandViolet
+                )
+            }
+            return@Scaffold
+        }
 
         // ── Loading ───────────────────────────────────────────────────────
         if (isLoading) {
