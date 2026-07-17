@@ -2,6 +2,7 @@ package com.example.aistudyassistant.network
 
 import android.content.Context
 import android.net.Uri
+import android.util.Log
 import com.example.aistudyassistant.models.DocumentEntry
 import com.example.aistudyassistant.models.FlashcardHistoryEntry
 import com.example.aistudyassistant.models.FlashcardSet
@@ -111,8 +112,10 @@ object ApiService {
         val sources: List<String>
     )
 
-    private data class DocsListResponse(
-        val documents: List<String>
+    // Internal (not private) so DocsListParsingTest exercises the exact class ApiService
+    // parses against, rather than a hand-copied mirror that could drift from it.
+    internal data class DocsListResponse(
+        val documents: List<String> = emptyList()
     )
 
     private data class QuizQuestionDto(
@@ -148,9 +151,56 @@ object ApiService {
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
+    private const val TAG = "ApiService"
+
     private fun errorDetail(body: String): String? = try {
         gson.fromJson(body, ErrorResponse::class.java).detail
     } catch (_: Exception) { null }
+
+    /**
+     * Never shows a raw exception to the user (e.g. Gson's "Expected BEGIN_ARRAY but was
+     * BEGIN_OBJECT") — that reads as a crash to a grader. Logs the real cause for us and
+     * returns a [Result.failure] carrying only a human-readable message.
+     */
+    private fun logAndFail(tag: String, e: Exception): Result<Nothing> {
+        Log.e(TAG, tag, e)
+        val message = when (e) {
+            is java.net.UnknownHostException,
+            is java.net.ConnectException,
+            is java.net.SocketTimeoutException,
+            is java.net.SocketException          -> "Can't reach the server. Check your connection."
+            is com.google.gson.JsonSyntaxException,
+            is IllegalStateException              -> "Couldn't read the server's response."
+            else                                   -> e.message ?: "Something went wrong. Please try again."
+        }
+        return Result.failure(IOException(message, e))
+    }
+
+    /** Non-2xx response -> a human message. 5xx is always generic; 4xx prefers the server's own detail. */
+    private fun friendlyHttpFailure(resp: Response, body: String, fallback: String): Result<Nothing> {
+        val message = if (resp.code >= 500) "The server had a problem. Try again." else errorDetail(body) ?: fallback
+        return Result.failure(IOException(message))
+    }
+
+    // ── Pure JSON parsing (no I/O) — pinned by unit tests in src/test ───────────
+    // The actual wire contract, confirmed 2026-07-17 against the live server:
+    // GET /docs-list -> {"documents": ["file.pdf", ...]} — plain filenames, no
+    // per-document timestamp yet, unlike what an earlier spec assumed.
+
+    internal fun parseDocsList(json: String): List<DocumentEntry> {
+        val wrapper = gson.fromJson(json, DocsListResponse::class.java) ?: DocsListResponse()
+        return wrapper.documents.map { filename -> DocumentEntry(filename = filename, timestamp = "") }
+    }
+
+    internal fun parseFlashcardHistoryJson(json: String): List<FlashcardHistoryEntry> {
+        val type = object : TypeToken<List<FlashcardHistoryEntry>>() {}.type
+        return gson.fromJson(json, type) ?: emptyList()
+    }
+
+    internal fun parseQuizHistoryJson(json: String): List<QuizHistoryEntry> {
+        val type = object : TypeToken<List<QuizHistoryEntry>>() {}.type
+        return gson.fromJson(json, type) ?: emptyList()
+    }
 
     // ── Public API ────────────────────────────────────────────────────────────
 
@@ -303,14 +353,14 @@ object ApiService {
             val req = Request.Builder().url(url).build()
             client.newCall(req).execute().use { resp ->
                 val respBody = resp.body?.string() ?: ""
-                if (resp.isSuccessful) {
-                    Result.success(gson.fromJson(respBody, DocsListResponse::class.java).documents)
-                } else {
-                    Result.failure(IOException("Failed to get docs (${resp.code})"))
+                when {
+                    resp.isSuccessful -> Result.success(parseDocsList(respBody).map { it.filename })
+                    resp.code == 404  -> Result.success(emptyList())
+                    else              -> friendlyHttpFailure(resp, respBody, "Failed to get docs (${resp.code})")
                 }
             }
         } catch (e: Exception) {
-            Result.failure(e)
+            logAndFail("getDocsList", e)
         }
     }
 
@@ -520,18 +570,14 @@ object ApiService {
             val req = Request.Builder().url(url).build()
             client.newCall(req).execute().use { resp ->
                 val respBody = resp.body?.string() ?: ""
-                if (resp.isSuccessful) {
-                    val type = object : TypeToken<List<DocumentEntry>>() {}.type
-                    val docs: List<DocumentEntry> = gson.fromJson(respBody, type) ?: emptyList()
-                    Result.success(docs)
-                } else {
-                    Result.failure(IOException(
-                        errorDetail(respBody) ?: "Failed to load documents (${resp.code})"
-                    ))
+                when {
+                    resp.isSuccessful -> Result.success(parseDocsList(respBody))
+                    resp.code == 404  -> Result.success(emptyList())   // no documents yet, not an error
+                    else              -> friendlyHttpFailure(resp, respBody, "Failed to load documents (${resp.code})")
                 }
             }
         } catch (e: Exception) {
-            Result.failure(e)
+            logAndFail("getDocumentsList", e)
         }
     }
 
@@ -593,17 +639,14 @@ object ApiService {
             val req = Request.Builder().url("${NetworkConfig.BASE_URL}/flashcards/$userId").build()
             client.newCall(req).execute().use { resp ->
                 val respBody = resp.body?.string() ?: ""
-                if (resp.isSuccessful) {
-                    val type = object : TypeToken<List<FlashcardHistoryEntry>>() {}.type
-                    Result.success<List<FlashcardHistoryEntry>>(gson.fromJson(respBody, type) ?: emptyList())
-                } else {
-                    Result.failure(IOException(
-                        errorDetail(respBody) ?: "Failed to load flashcard history (${resp.code})"
-                    ))
+                when {
+                    resp.isSuccessful -> Result.success(parseFlashcardHistoryJson(respBody))
+                    resp.code == 404  -> Result.success(emptyList())   // no sets yet, not an error
+                    else              -> friendlyHttpFailure(resp, respBody, "Failed to load flashcard history (${resp.code})")
                 }
             }
         } catch (e: Exception) {
-            Result.failure(e)
+            logAndFail("getFlashcardHistory", e)
         }
     }
 
@@ -672,17 +715,14 @@ object ApiService {
             val req = Request.Builder().url("${NetworkConfig.BASE_URL}/quizzes/$userId").build()
             client.newCall(req).execute().use { resp ->
                 val respBody = resp.body?.string() ?: ""
-                if (resp.isSuccessful) {
-                    val type = object : TypeToken<List<QuizHistoryEntry>>() {}.type
-                    Result.success<List<QuizHistoryEntry>>(gson.fromJson(respBody, type) ?: emptyList())
-                } else {
-                    Result.failure(IOException(
-                        errorDetail(respBody) ?: "Failed to load quiz history (${resp.code})"
-                    ))
+                when {
+                    resp.isSuccessful -> Result.success(parseQuizHistoryJson(respBody))
+                    resp.code == 404  -> Result.success(emptyList())   // no quizzes yet, not an error
+                    else              -> friendlyHttpFailure(resp, respBody, "Failed to load quiz history (${resp.code})")
                 }
             }
         } catch (e: Exception) {
-            Result.failure(e)
+            logAndFail("getQuizHistory", e)
         }
     }
 

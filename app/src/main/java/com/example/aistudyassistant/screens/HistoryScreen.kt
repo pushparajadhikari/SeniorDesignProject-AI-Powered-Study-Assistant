@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.sp
 import com.example.aistudyassistant.network.ApiService
 import com.example.aistudyassistant.ui.animation.CountUpText
 import com.example.aistudyassistant.ui.components.BrandLogoMark
+import com.example.aistudyassistant.ui.components.formatUploadDate
 import com.example.aistudyassistant.ui.theme.*
 import com.google.gson.annotations.SerializedName
 
@@ -40,14 +41,16 @@ data class UserProgress(
 )
 
 data class PdfUpload(
-    @SerializedName("filename")    val filename:   String = "",
-    @SerializedName("uploaded_at") val uploadedAt: String = ""
+    @SerializedName("filename") val filename: String = "",
+    // Live backend actually sends "timestamp"; "uploaded_at" kept as a fallback in
+    // case that ever changes — this is exactly the field-name drift this fix guards.
+    @SerializedName(value = "timestamp", alternate = ["uploaded_at"]) val uploadedAt: String = ""
 )
 
 data class QuizResult(
-    @SerializedName("total_questions") val total:    Int = 0,
-    @SerializedName("correct")         val correct:  Int = 0,
-    @SerializedName("taken_at")        val takenAt:  String = ""
+    @SerializedName("total_questions") val total:   Int = 0,
+    @SerializedName("correct")         val correct: Int = 0,
+    @SerializedName(value = "timestamp", alternate = ["taken_at"]) val takenAt: String = ""
 )
 
 // ── Screen ────────────────────────────────────────────────────────────────────
@@ -231,7 +234,7 @@ fun HistoryScreen(userId: Int?) {
                                     color      = TextPrimary
                                 )
                                 if (pdf.uploadedAt.isNotBlank()) {
-                                    Text(pdf.uploadedAt, fontSize = 11.sp, color = TextSecondary)
+                                    Text(formatUploadDate(pdf.uploadedAt), fontSize = 11.sp, color = TextSecondary)
                                 }
                             }
                         }
@@ -267,7 +270,7 @@ fun HistoryScreen(userId: Int?) {
                                     color      = TextPrimary
                                 )
                                 if (quiz.takenAt.isNotBlank()) {
-                                    Text(quiz.takenAt, fontSize = 11.sp, color = TextSecondary)
+                                    Text(formatUploadDate(quiz.takenAt), fontSize = 11.sp, color = TextSecondary)
                                 }
                             }
                         }
