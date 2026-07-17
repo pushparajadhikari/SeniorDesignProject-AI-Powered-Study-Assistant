@@ -7,13 +7,12 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.aistudyassistant.ui.components.BrandBanner
 import com.example.aistudyassistant.ui.theme.*
 
 @Composable
@@ -37,31 +36,8 @@ fun AuthChoiceScreen(
         ) {
 
             // ── Logo area ─────────────────────────────────────────────────
-            Box(
-                modifier         = Modifier
-                    .size(90.dp)
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(Color.White.copy(alpha = 0.2f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Text("📖", fontSize = 44.sp)
-            }
-
-            Spacer(Modifier.height(20.dp))
-
-            Text(
-                text       = "StudyAI",
-                fontSize   = 36.sp,
-                fontWeight = FontWeight.Bold,
-                color      = Color.White
-            )
-
-            Text(
-                text      = "Smart Notes. Smarter You.",
-                fontSize  = 15.sp,
-                color     = Color.White.copy(alpha = 0.75f),
-                textAlign = TextAlign.Center
-            )
+            // The banner already carries the wordmark and the tagline.
+            BrandBanner(width = 230.dp)
 
             Spacer(Modifier.height(56.dp))
 

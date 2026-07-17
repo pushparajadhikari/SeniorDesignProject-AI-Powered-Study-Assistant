@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.aistudyassistant.auth.UserManager
 import com.example.aistudyassistant.network.ApiService
+import com.example.aistudyassistant.ui.components.BrandLogoBadge
 import com.example.aistudyassistant.ui.theme.*
 import java.util.Calendar
 
@@ -68,9 +69,16 @@ fun DashboardScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(Brush.linearGradient(listOf(GradientStart, GradientMid, GradientEnd)))
-                    .padding(horizontal = 24.dp, vertical = 32.dp)
+                    .padding(horizontal = 24.dp, vertical = 24.dp)
             ) {
                 Column {
+                    BrandLogoBadge(
+                        size     = 40.dp,
+                        modifier = Modifier.align(Alignment.CenterHorizontally)
+                    )
+
+                    Spacer(Modifier.height(20.dp))
+
                     Row(
                         modifier              = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,

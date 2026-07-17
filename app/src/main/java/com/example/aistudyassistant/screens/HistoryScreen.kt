@@ -20,6 +20,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.aistudyassistant.network.ApiService
+import com.example.aistudyassistant.ui.components.BrandLogoMark
 import com.example.aistudyassistant.ui.theme.*
 import com.google.gson.annotations.SerializedName
 
@@ -75,9 +76,13 @@ fun HistoryScreen(userId: Int?) {
         topBar = {
             TopAppBar(
                 title = {
-                    Column {
-                        Text("Your Progress", fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
-                        Text("Uploads & quiz history", fontSize = 11.sp, color = TextSecondary)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        BrandLogoMark(size = 30.dp)
+                        Spacer(Modifier.width(10.dp))
+                        Column {
+                            Text("Your Progress", fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
+                            Text("Uploads & quiz history", fontSize = 11.sp, color = TextSecondary)
+                        }
                     }
                 },
                 actions = {

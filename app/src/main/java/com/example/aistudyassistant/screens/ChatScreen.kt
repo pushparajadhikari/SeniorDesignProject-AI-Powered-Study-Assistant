@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.aistudyassistant.auth.UserManager
 import com.example.aistudyassistant.network.ApiService
+import com.example.aistudyassistant.ui.components.BrandLogoMark
 import com.example.aistudyassistant.ui.theme.*
 import kotlinx.coroutines.launch
 import java.util.UUID
@@ -115,15 +116,7 @@ fun ChatScreen(onBack: () -> Unit, onHistory: () -> Unit = {}, showBackButton: B
             TopAppBar(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier         = Modifier
-                                .size(32.dp)
-                                .clip(CircleShape)
-                                .background(BrandTeal.copy(alpha = 0.15f)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text("🤖", fontSize = 16.sp)
-                        }
+                        BrandLogoMark(size = 30.dp)
                         Spacer(Modifier.width(10.dp))
                         Column {
                             Text("AI Assistant", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)

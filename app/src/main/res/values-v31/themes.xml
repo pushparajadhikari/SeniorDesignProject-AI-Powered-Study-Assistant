@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!--
+      Android 12+ draws the launch screen itself, using the adaptive launcher icon.
+      Only the plate colour needs pinning, so the white-backed logo mark doesn't land
+      on the default window background.
+    -->
+    <style name="Theme.AIStudyAssistant" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowSplashScreenBackground">@color/ic_launcher_background</item>
+    </style>
+</resources>
