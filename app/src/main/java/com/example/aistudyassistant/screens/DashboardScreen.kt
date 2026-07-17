@@ -1,7 +1,9 @@
 package com.example.aistudyassistant.screens
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
@@ -22,14 +24,19 @@ import androidx.compose.ui.unit.sp
 import com.example.aistudyassistant.auth.UserManager
 import com.example.aistudyassistant.network.ApiService
 import com.example.aistudyassistant.ui.components.BrandLogoBadge
+import com.example.aistudyassistant.ui.components.DestructiveConfirmDialog
 import com.example.aistudyassistant.ui.theme.*
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.util.Calendar
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun DashboardScreen(
     onProfileClick: () -> Unit = {}
 ) {
     val context = LocalContext.current
+    val scope   = rememberCoroutineScope()
     val session = UserManager.getCurrentSession(context)
 
     val greeting = remember {
@@ -45,6 +52,43 @@ fun DashboardScreen(
     var docsLoading  by remember { mutableStateOf(true) }
     var serverOnline by remember { mutableStateOf<Boolean?>(null) }   // null = checking
     var refreshKey   by remember { mutableStateOf(0) }
+
+    // ── Delete state ──────────────────────────────────────────────────────────
+    var docPendingDelete by remember { mutableStateOf<String?>(null) }
+    var deleteError       by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(deleteError) {
+        if (deleteError != null) {
+            delay(4000)
+            deleteError = null
+        }
+    }
+
+    fun deleteDocument(docName: String) {
+        val uid = session?.serverId
+        if (uid == null) {
+            deleteError = "Sign in to manage documents"
+            return
+        }
+        val previousDocs = docs
+        docs = docs.filterNot { it == docName }   // optimistic
+        scope.launch {
+            ApiService.deleteDocument(uid, docName)
+                .onFailure { err ->
+                    docs        = previousDocs     // restore the row
+                    deleteError = err.message ?: "Could not delete \"$docName\""
+                }
+        }
+    }
+
+    docPendingDelete?.let { name ->
+        DestructiveConfirmDialog(
+            title     = "Delete document?",
+            message   = "This removes \"$name\" and its indexed content, so it can no longer be used for new quizzes or flashcards. Existing quiz and flashcard history from this PDF is kept.",
+            onConfirm = { deleteDocument(name); docPendingDelete = null },
+            onDismiss = { docPendingDelete = null }
+        )
+    }
 
     LaunchedEffect(refreshKey) {
         docsLoading = true
@@ -210,11 +254,31 @@ fun DashboardScreen(
                         }
                     }
                 } else {
+                    if (deleteError != null) {
+                        Card(
+                            shape  = RoundedCornerShape(12.dp),
+                            colors = CardDefaults.cardColors(containerColor = AccentRed.copy(alpha = 0.08f)),
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                        ) {
+                            Text(
+                                deleteError ?: "",
+                                fontSize = 12.sp,
+                                color    = AccentRed,
+                                modifier = Modifier.padding(12.dp)
+                            )
+                        }
+                    }
                     docs.forEach { docName ->
                         Card(
                             shape    = RoundedCornerShape(12.dp),
                             colors   = CardDefaults.cardColors(containerColor = Color.White),
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp)
+                                .combinedClickable(
+                                    onClick     = {},
+                                    onLongClick = { docPendingDelete = docName }
+                                )
                         ) {
                             Row(
                                 modifier          = Modifier.padding(12.dp),

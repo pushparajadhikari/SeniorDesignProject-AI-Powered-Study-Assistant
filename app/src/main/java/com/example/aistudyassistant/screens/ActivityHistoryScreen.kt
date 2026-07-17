@@ -1,7 +1,9 @@
 package com.example.aistudyassistant.screens
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -30,8 +32,11 @@ import com.example.aistudyassistant.network.ApiService
 import com.example.aistudyassistant.ui.animation.ShimmerBox
 import com.example.aistudyassistant.ui.animation.StaggeredEntranceItem
 import com.example.aistudyassistant.ui.components.BrandLogoMark
+import com.example.aistudyassistant.ui.components.DestructiveConfirmDialog
 import com.example.aistudyassistant.ui.components.formatUploadDate
 import com.example.aistudyassistant.ui.theme.*
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 private enum class HistoryTab(val label: String) { QUIZZES("Quizzes"), FLASHCARDS("Flashcards") }
 
@@ -110,10 +115,14 @@ fun ActivityHistoryScreen(onBack: () -> Unit) {
 
 @Composable
 private fun QuizHistoryList(userId: Int?, onOpen: (Int) -> Unit) {
+    val scope = rememberCoroutineScope()
     var isLoading    by remember { mutableStateOf(true) }
     var entries      by remember { mutableStateOf<List<QuizHistoryEntry>>(emptyList()) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var retryKey     by remember { mutableStateOf(0) }
+
+    var pendingDelete by remember { mutableStateOf<QuizHistoryEntry?>(null) }
+    var deleteError    by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(userId, retryKey) {
         if (userId == null) { isLoading = false; return@LaunchedEffect }
@@ -124,11 +133,38 @@ private fun QuizHistoryList(userId: Int?, onOpen: (Int) -> Unit) {
             .onFailure { errorMessage = it.message ?: "Failed to load quiz history"; isLoading = false }
     }
 
+    LaunchedEffect(deleteError) {
+        if (deleteError != null) { delay(4000); deleteError = null }
+    }
+
+    fun deleteQuiz(entry: QuizHistoryEntry) {
+        val uid = userId ?: return
+        val previous = entries
+        entries = entries.filterNot { it.id == entry.id }   // optimistic
+        scope.launch {
+            ApiService.deleteQuiz(uid, entry.id)
+                .onFailure { err ->
+                    entries     = previous                   // restore the row
+                    deleteError = err.message ?: "Could not delete this quiz"
+                }
+        }
+    }
+
+    pendingDelete?.let { entry ->
+        DestructiveConfirmDialog(
+            title     = "Delete this quiz?",
+            message   = "This can't be undone.",
+            onConfirm = { deleteQuiz(entry); pendingDelete = null },
+            onDismiss = { pendingDelete = null }
+        )
+    }
+
     HistoryListContent(
         isLoading    = isLoading,
         errorMessage = errorMessage,
         isEmpty      = entries.isEmpty(),
         onRetry      = { retryKey++ },
+        deleteError  = deleteError,
         emptyEmoji   = "🎯",
         emptyTitle   = "No quizzes taken yet",
         emptySubtitle = "Finish a quiz and it will show up here"
@@ -141,7 +177,8 @@ private fun QuizHistoryList(userId: Int?, onOpen: (Int) -> Unit) {
                     dateLabel   = formatUploadDate(entry.createdAt),
                     icon        = Icons.Default.Description,
                     accentColor = BrandViolet,
-                    onClick     = { onOpen(entry.id) }
+                    onClick     = { onOpen(entry.id) },
+                    onLongClick = { pendingDelete = entry }
                 )
             }
         }
@@ -225,10 +262,14 @@ private fun QuizDetailScreen(userId: Int?, quizId: Int, onBack: () -> Unit) {
 
 @Composable
 private fun FlashcardHistoryList(userId: Int?, onOpen: (Int) -> Unit) {
+    val scope = rememberCoroutineScope()
     var isLoading    by remember { mutableStateOf(true) }
     var entries      by remember { mutableStateOf<List<FlashcardHistoryEntry>>(emptyList()) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var retryKey     by remember { mutableStateOf(0) }
+
+    var pendingDelete by remember { mutableStateOf<FlashcardHistoryEntry?>(null) }
+    var deleteError    by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(userId, retryKey) {
         if (userId == null) { isLoading = false; return@LaunchedEffect }
@@ -239,11 +280,38 @@ private fun FlashcardHistoryList(userId: Int?, onOpen: (Int) -> Unit) {
             .onFailure { errorMessage = it.message ?: "Failed to load flashcard history"; isLoading = false }
     }
 
+    LaunchedEffect(deleteError) {
+        if (deleteError != null) { delay(4000); deleteError = null }
+    }
+
+    fun deleteSet(entry: FlashcardHistoryEntry) {
+        val uid = userId ?: return
+        val previous = entries
+        entries = entries.filterNot { it.id == entry.id }   // optimistic
+        scope.launch {
+            ApiService.deleteFlashcardSet(uid, entry.id)
+                .onFailure { err ->
+                    entries     = previous                   // restore the row
+                    deleteError = err.message ?: "Could not delete this set"
+                }
+        }
+    }
+
+    pendingDelete?.let { entry ->
+        DestructiveConfirmDialog(
+            title     = "Delete this flashcard set?",
+            message   = "This can't be undone.",
+            onConfirm = { deleteSet(entry); pendingDelete = null },
+            onDismiss = { pendingDelete = null }
+        )
+    }
+
     HistoryListContent(
         isLoading    = isLoading,
         errorMessage = errorMessage,
         isEmpty      = entries.isEmpty(),
         onRetry      = { retryKey++ },
+        deleteError  = deleteError,
         emptyEmoji   = "🗂️",
         emptyTitle   = "No flashcard sets yet",
         emptySubtitle = "Generate a set from a PDF and it will show up here"
@@ -256,7 +324,8 @@ private fun FlashcardHistoryList(userId: Int?, onOpen: (Int) -> Unit) {
                     dateLabel   = formatUploadDate(entry.createdAt),
                     icon        = Icons.Default.Style,
                     accentColor = BrandTeal,
-                    onClick     = { onOpen(entry.id) }
+                    onClick     = { onOpen(entry.id) },
+                    onLongClick = { pendingDelete = entry }
                 )
             }
         }
@@ -325,6 +394,7 @@ private fun HistoryListContent(
     emptyEmoji:    String,
     emptyTitle:    String,
     emptySubtitle: String,
+    deleteError:   String? = null,
     content:       androidx.compose.foundation.lazy.LazyListScope.() -> Unit
 ) {
     when {
@@ -336,14 +406,26 @@ private fun HistoryListContent(
             repeat(3) { ShimmerBox(modifier = Modifier.fillMaxWidth().height(64.dp)) }
         }
         isEmpty -> CenteredEmpty(Modifier.fillMaxSize().padding(24.dp), emptyEmoji, emptyTitle, emptySubtitle)
-        else -> LazyColumn(
-            modifier       = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(vertical = 16.dp),
-            content        = content
-        )
+        else -> Column(modifier = Modifier.fillMaxSize()) {
+            if (deleteError != null) {
+                Card(
+                    shape    = RoundedCornerShape(12.dp),
+                    colors   = CardDefaults.cardColors(containerColor = AccentRed.copy(alpha = 0.08f)),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
+                ) {
+                    Text(deleteError, fontSize = 12.sp, color = AccentRed, modifier = Modifier.padding(12.dp))
+                }
+            }
+            LazyColumn(
+                modifier       = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(vertical = 16.dp),
+                content        = content
+            )
+        }
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun HistoryRow(
     title:       String,
@@ -351,13 +433,16 @@ private fun HistoryRow(
     dateLabel:   String,
     icon:        androidx.compose.ui.graphics.vector.ImageVector,
     accentColor: Color,
-    onClick:     () -> Unit
+    onClick:     () -> Unit,
+    onLongClick: () -> Unit = {}
 ) {
     Card(
         shape    = RoundedCornerShape(14.dp),
         colors   = CardDefaults.cardColors(containerColor = Color.White),
         elevation = CardDefaults.cardElevation(1.dp),
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)
+        modifier = Modifier
+            .fillMaxWidth()
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
     ) {
         Row(
             modifier          = Modifier.padding(14.dp),
