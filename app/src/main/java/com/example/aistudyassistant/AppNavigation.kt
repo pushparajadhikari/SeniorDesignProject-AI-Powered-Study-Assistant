@@ -81,8 +81,9 @@ fun AppNavigation() {
             }
 
             MainScaffold(
-                onUploadClick = { navController.navigate("upload") },
-                onLogout      = {
+                onUploadClick  = { navController.navigate("upload") },
+                onHistoryClick = { navController.navigate("history") },
+                onLogout       = {
                     UserManager.logout(context)
                     navController.navigate("auth") {
                         popUpTo("main") { inclusive = true }
@@ -102,6 +103,11 @@ fun AppNavigation() {
                 onBack        = { navController.popBackStack() },
                 onUploadClick = { navController.navigate("upload") }
             )
+        }
+
+        // ── History (Quizzes / Flashcards tabs, reached from Chat's History icon) ─
+        composable("history") {
+            ActivityHistoryScreen(onBack = { navController.popBackStack() })
         }
     }
 }
