@@ -70,3 +70,29 @@ pip install -r requirements.txt
 
 # Run the FastAPI server
 uvicorn main:app --reload
+```
+
+### 2. Backend URL
+
+The Android app's backend address is set in one place:
+`app/src/main/java/com/example/aistudyassistant/network/NetworkConfig.kt`
+
+By default it points at the public backend, published through a Cloudflare Tunnel — no VPN
+required on the phone:
+
+```kotlin
+const val BASE_URL = "https://studyai.binodtiwari.com"
+```
+
+**Tailscale fallback.** If the tunnel is down, comment out the line above and uncomment the
+Tailscale fallback in the same file:
+
+```kotlin
+const val BASE_URL = "http://100.95.45.33:8002"
+```
+
+The fallback requires Tailscale running on the phone and connected to the same tailnet as the
+backend host. Cleartext HTTP is otherwise blocked app-wide by
+`app/src/main/res/xml/network_security_config.xml`, which carves out a cleartext exception for
+that one Tailscale IP only. Once the tunnel is no longer a single point of failure, delete the
+`domain-config` block from that file and remove the commented fallback line here.
