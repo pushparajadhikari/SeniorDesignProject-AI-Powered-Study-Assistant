@@ -24,6 +24,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.aistudyassistant.auth.UserManager
+import com.example.aistudyassistant.ui.components.BrandBanner
 import com.example.aistudyassistant.ui.theme.*
 
 @Composable
@@ -49,16 +50,21 @@ fun LoginScreen(
 
         Column(modifier = Modifier.fillMaxSize()) {
 
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(top = 48.dp, start = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = onBack) {
+            // Back arrow keeps its place; the banner sits centred alongside it.
+            Box(modifier = Modifier.fillMaxWidth().padding(top = 40.dp)) {
+                IconButton(
+                    onClick  = onBack,
+                    modifier = Modifier.align(Alignment.CenterStart).padding(start = 8.dp)
+                ) {
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = Color.White)
                 }
+                BrandBanner(
+                    width    = 140.dp,
+                    modifier = Modifier.align(Alignment.Center)
+                )
             }
 
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(14.dp))
 
             Column(modifier = Modifier.padding(horizontal = 28.dp)) {
                 Text("Welcome back 👋", fontSize = 30.sp, fontWeight = FontWeight.Bold, color = Color.White)

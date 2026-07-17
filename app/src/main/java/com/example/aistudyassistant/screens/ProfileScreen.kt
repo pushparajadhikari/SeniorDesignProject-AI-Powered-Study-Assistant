@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.example.aistudyassistant.auth.UserManager
+import com.example.aistudyassistant.ui.components.BrandLogoMark
 import com.example.aistudyassistant.ui.theme.*
 
 // ── Sub-screen enum ───────────────────────────────────────────────────────────
@@ -105,7 +106,13 @@ fun ProfileScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title  = { Text("Profile", fontWeight = FontWeight.SemiBold) },
+                title  = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        BrandLogoMark(size = 30.dp)
+                        Spacer(Modifier.width(10.dp))
+                        Text("Profile", fontWeight = FontWeight.SemiBold)
+                    }
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")

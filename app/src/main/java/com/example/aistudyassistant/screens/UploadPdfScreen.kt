@@ -26,6 +26,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.aistudyassistant.network.ApiService
+import com.example.aistudyassistant.ui.components.BrandLogoMark
 import com.example.aistudyassistant.ui.theme.*
 import kotlinx.coroutines.launch
 
@@ -70,7 +71,13 @@ fun UploadPdfScreen(onBack: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title  = { Text("Upload Material", fontWeight = FontWeight.SemiBold) },
+                title  = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        BrandLogoMark(size = 30.dp)
+                        Spacer(Modifier.width(10.dp))
+                        Text("Upload Material", fontWeight = FontWeight.SemiBold)
+                    }
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")

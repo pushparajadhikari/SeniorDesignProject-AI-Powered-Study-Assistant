@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.aistudyassistant.models.QuizQuestion
 import com.example.aistudyassistant.network.ApiService
+import com.example.aistudyassistant.ui.components.BrandLogoMark
 import com.example.aistudyassistant.ui.theme.*
 
 // ── Screen ────────────────────────────────────────────────────────────────────
@@ -65,9 +66,13 @@ fun QuizScreen(onBack: () -> Unit) {
         topBar = {
             TopAppBar(
                 title = {
-                    Column {
-                        Text("Quiz", fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
-                        Text("From your notes", fontSize = 11.sp, color = TextSecondary)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        BrandLogoMark(size = 30.dp)
+                        Spacer(Modifier.width(10.dp))
+                        Column {
+                            Text("Quiz", fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
+                            Text("From your notes", fontSize = 11.sp, color = TextSecondary)
+                        }
                     }
                 },
                 navigationIcon = {
