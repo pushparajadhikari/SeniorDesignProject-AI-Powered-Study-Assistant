@@ -257,13 +257,11 @@ object ApiService {
                 if (resp.isSuccessful) {
                     Result.success(gson.fromJson(body, UploadResponse::class.java).message)
                 } else {
-                    Result.failure(IOException(
-                        errorDetail(body) ?: "Upload failed (${resp.code})"
-                    ))
+                    friendlyHttpFailure(resp, body, "Upload failed (${resp.code})")
                 }
             }
         } catch (e: Exception) {
-            Result.failure(e)
+            logAndFail("uploadPdf", e)
         }
     }
 
@@ -286,13 +284,11 @@ object ApiService {
                     val parsed = gson.fromJson(respBody, ChatResponse::class.java)
                     Result.success(Pair(parsed.answer, parsed.sources.firstOrNull()))
                 } else {
-                    Result.failure(IOException(
-                        errorDetail(respBody) ?: "Chat failed (${resp.code})"
-                    ))
+                    friendlyHttpFailure(resp, respBody, "Chat failed (${resp.code})")
                 }
             }
         } catch (e: Exception) {
-            Result.failure(e)
+            logAndFail("chat", e)
         }
     }
 
@@ -328,13 +324,11 @@ object ApiService {
                     }
                     Result.success(questions)
                 } else {
-                    Result.failure(IOException(
-                        errorDetail(respBody) ?: "Quiz generation failed (${resp.code})"
-                    ))
+                    friendlyHttpFailure(resp, respBody, "Quiz generation failed (${resp.code})")
                 }
             }
         } catch (e: Exception) {
-            Result.failure(e)
+            logAndFail("generateQuiz", e)
         }
     }
 
@@ -381,10 +375,10 @@ object ApiService {
                 .build()
             client.newCall(req).execute().use { resp ->
                 if (resp.isSuccessful) Result.success(Unit)
-                else Result.failure(IOException("Delete failed (${resp.code})"))
+                else friendlyHttpFailure(resp, resp.body?.string() ?: "", "Delete failed (${resp.code})")
             }
         } catch (e: Exception) {
-            Result.failure(e)
+            logAndFail("deleteDoc", e)
         }
     }
 
@@ -424,10 +418,10 @@ object ApiService {
                 .build()
             client.newCall(req).execute().use { resp ->
                 if (resp.isSuccessful) Result.success(Unit)
-                else Result.failure(IOException("Clear session failed (${resp.code})"))
+                else friendlyHttpFailure(resp, resp.body?.string() ?: "", "Clear session failed (${resp.code})")
             }
         } catch (e: Exception) {
-            Result.failure(e)
+            logAndFail("clearSession", e)
         }
     }
 
@@ -458,13 +452,13 @@ object ApiService {
                     if (resp.isSuccessful && parsed?.success == true && parsed.user != null) {
                         Result.success(parsed.user.id)
                     } else {
-                        Result.failure(IOException(
-                            parsed?.message ?: errorDetail(respBody) ?: "Registration failed (${resp.code})"
-                        ))
+                        val message = if (resp.code >= 500) "The server had a problem. Try again."
+                                      else parsed?.message ?: errorDetail(respBody) ?: "Registration failed (${resp.code})"
+                        Result.failure(IOException(message))
                     }
                 }
             } catch (e: Exception) {
-                Result.failure(e)
+                logAndFail("register", e)
             }
         }
 
@@ -492,13 +486,13 @@ object ApiService {
                     if (resp.isSuccessful && parsed?.success == true && parsed.user != null) {
                         Result.success(parsed.user.id)
                     } else {
-                        Result.failure(IOException(
-                            parsed?.message ?: errorDetail(respBody) ?: "Invalid email or password"
-                        ))
+                        val message = if (resp.code >= 500) "The server had a problem. Try again."
+                                      else parsed?.message ?: errorDetail(respBody) ?: "Invalid email or password"
+                        Result.failure(IOException(message))
                     }
                 }
             } catch (e: Exception) {
-                Result.failure(e)
+                logAndFail("login", e)
             }
         }
 
@@ -519,13 +513,11 @@ object ApiService {
                     if (resp.isSuccessful) {
                         Result.success(Unit)
                     } else {
-                        Result.failure(IOException(
-                            errorDetail(resp.body?.string() ?: "") ?: "Failed to save quiz result (${resp.code})"
-                        ))
+                        friendlyHttpFailure(resp, resp.body?.string() ?: "", "Failed to save quiz result (${resp.code})")
                     }
                 }
             } catch (e: Exception) {
-                Result.failure(e)
+                logAndFail("postQuizResult", e)
             }
         }
 
@@ -545,13 +537,11 @@ object ApiService {
                 if (resp.isSuccessful) {
                     Result.success(gson.fromJson(respBody, UserProgress::class.java))
                 } else {
-                    Result.failure(IOException(
-                        errorDetail(respBody) ?: "Failed to load progress (${resp.code})"
-                    ))
+                    friendlyHttpFailure(resp, respBody, "Failed to load progress (${resp.code})")
                 }
             }
         } catch (e: Exception) {
-            Result.failure(e)
+            logAndFail("getProgress", e)
         }
     }
 
@@ -593,12 +583,10 @@ object ApiService {
                 .build()
             client.newCall(req).execute().use { resp ->
                 if (resp.isSuccessful) Result.success(Unit)
-                else Result.failure(IOException(
-                    errorDetail(resp.body?.string() ?: "") ?: "Delete failed (${resp.code})"
-                ))
+                else friendlyHttpFailure(resp, resp.body?.string() ?: "", "Delete failed (${resp.code})")
             }
         } catch (e: Exception) {
-            Result.failure(e)
+            logAndFail("deleteDocument", e)
         }
     }
 
@@ -623,13 +611,11 @@ object ApiService {
                     }
                     Result.success(FlashcardSet(parsed.setId, cards))
                 } else {
-                    Result.failure(IOException(
-                        errorDetail(respBody) ?: "Flashcard generation failed (${resp.code})"
-                    ))
+                    friendlyHttpFailure(resp, respBody, "Flashcard generation failed (${resp.code})")
                 }
             }
         } catch (e: Exception) {
-            Result.failure(e)
+            logAndFail("generateFlashcards", e)
         }
     }
 
@@ -659,13 +645,11 @@ object ApiService {
                 if (resp.isSuccessful) {
                     Result.success(gson.fromJson(respBody, FlashcardSetDetail::class.java))
                 } else {
-                    Result.failure(IOException(
-                        errorDetail(respBody) ?: "Failed to load flashcard set (${resp.code})"
-                    ))
+                    friendlyHttpFailure(resp, respBody, "Failed to load flashcard set (${resp.code})")
                 }
             }
         } catch (e: Exception) {
-            Result.failure(e)
+            logAndFail("getFlashcardSet", e)
         }
     }
 
@@ -678,12 +662,10 @@ object ApiService {
                 .build()
             client.newCall(req).execute().use { resp ->
                 if (resp.isSuccessful) Result.success(Unit)
-                else Result.failure(IOException(
-                    errorDetail(resp.body?.string() ?: "") ?: "Delete failed (${resp.code})"
-                ))
+                else friendlyHttpFailure(resp, resp.body?.string() ?: "", "Delete failed (${resp.code})")
             }
         } catch (e: Exception) {
-            Result.failure(e)
+            logAndFail("deleteFlashcardSet", e)
         }
     }
 
@@ -700,12 +682,10 @@ object ApiService {
                 .build()
             client.newCall(req).execute().use { resp ->
                 if (resp.isSuccessful) Result.success(Unit)
-                else Result.failure(IOException(
-                    errorDetail(resp.body?.string() ?: "") ?: "Failed to save progress (${resp.code})"
-                ))
+                else friendlyHttpFailure(resp, resp.body?.string() ?: "", "Failed to save progress (${resp.code})")
             }
         } catch (e: Exception) {
-            Result.failure(e)
+            logAndFail("postFlashcardReveal", e)
         }
     }
 
@@ -735,13 +715,11 @@ object ApiService {
                 if (resp.isSuccessful) {
                     Result.success(gson.fromJson(respBody, QuizDetail::class.java))
                 } else {
-                    Result.failure(IOException(
-                        errorDetail(respBody) ?: "Failed to load quiz (${resp.code})"
-                    ))
+                    friendlyHttpFailure(resp, respBody, "Failed to load quiz (${resp.code})")
                 }
             }
         } catch (e: Exception) {
-            Result.failure(e)
+            logAndFail("getQuizDetail", e)
         }
     }
 
@@ -754,12 +732,10 @@ object ApiService {
                 .build()
             client.newCall(req).execute().use { resp ->
                 if (resp.isSuccessful) Result.success(Unit)
-                else Result.failure(IOException(
-                    errorDetail(resp.body?.string() ?: "") ?: "Delete failed (${resp.code})"
-                ))
+                else friendlyHttpFailure(resp, resp.body?.string() ?: "", "Delete failed (${resp.code})")
             }
         } catch (e: Exception) {
-            Result.failure(e)
+            logAndFail("deleteQuiz", e)
         }
     }
 }
