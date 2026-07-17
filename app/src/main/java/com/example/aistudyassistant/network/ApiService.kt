@@ -2,10 +2,17 @@ package com.example.aistudyassistant.network
 
 import android.content.Context
 import android.net.Uri
+import com.example.aistudyassistant.models.DocumentEntry
+import com.example.aistudyassistant.models.FlashcardHistoryEntry
+import com.example.aistudyassistant.models.FlashcardSet
+import com.example.aistudyassistant.models.FlashcardSetDetail
+import com.example.aistudyassistant.models.QuizDetail
+import com.example.aistudyassistant.models.QuizHistoryEntry
 import com.example.aistudyassistant.models.QuizQuestion
 import com.example.aistudyassistant.screens.UserProgress
 import com.google.gson.Gson
 import com.google.gson.annotations.SerializedName
+import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.*
@@ -39,7 +46,20 @@ object ApiService {
 
     private data class QuizRequest(
         @SerializedName("user_id")       val userId:       Int? = null,
-        @SerializedName("num_questions") val numQuestions: Int  = 5
+        @SerializedName("num_questions") val numQuestions: Int  = 5,
+        @SerializedName("source_pdf")    val sourcePdf:    String? = null
+    )
+
+    private data class FlashcardRequest(
+        @SerializedName("user_id")    val userId:    Int?,
+        @SerializedName("source_pdf") val sourcePdf: String? = null,
+        val count: Int
+    )
+
+    private data class FlashcardRevealRequest(
+        @SerializedName("user_id")        val userId:        Int,
+        @SerializedName("set_id")         val setId:         Int,
+        @SerializedName("revealed_count") val revealedCount: Int
     )
 
     private data class QuizResultRequest(
@@ -103,7 +123,20 @@ object ApiService {
     )
 
     private data class QuizResponse(
+        @SerializedName("quiz_id") val quizId: Int? = null,
         val questions: List<QuizQuestionDto>
+    )
+
+    private data class FlashcardCardDto(
+        val question:    String,
+        val options:     List<String>,
+        @SerializedName("correct_index") val correctIndex: Int,
+        val explanation: String
+    )
+
+    private data class FlashcardGenerateResponse(
+        @SerializedName("set_id") val setId: Int,
+        val cards: List<FlashcardCardDto>
     )
 
     private data class UploadProgressResponse(
@@ -218,10 +251,14 @@ object ApiService {
      * questions from the currently indexed documents. Backend clamps the
      * count to [1, 20].
      */
-    suspend fun generateQuiz(userId: Int? = null, numQuestions: Int = 5): Result<List<QuizQuestion>> = withContext(Dispatchers.IO) {
+    suspend fun generateQuiz(
+        userId:       Int? = null,
+        numQuestions: Int  = 5,
+        sourcePdf:    String? = null
+    ): Result<List<QuizQuestion>> = withContext(Dispatchers.IO) {
         try {
-            // Gson omits a null user_id, so anonymous callers send only num_questions.
-            val body = gson.toJson(QuizRequest(userId, numQuestions)).toRequestBody(JSON_MEDIA)
+            // Gson omits null fields, so anonymous/all-documents callers send only what they have.
+            val body = gson.toJson(QuizRequest(userId, numQuestions, sourcePdf)).toRequestBody(JSON_MEDIA)
             val req = Request.Builder()
                 .url("${NetworkConfig.BASE_URL}/quiz")
                 .post(body)
@@ -462,6 +499,224 @@ object ApiService {
                         errorDetail(respBody) ?: "Failed to load progress (${resp.code})"
                     ))
                 }
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * GET /docs-list?user_id= — this user's PDFs with upload dates, newest-first
+     * ordering left to the caller. Used by the shared PDF-source picker (quiz +
+     * flashcards); [getDocsList] above remains the plain-filename list Dashboard uses.
+     */
+    suspend fun getDocumentsList(userId: Int? = null): Result<List<DocumentEntry>> = withContext(Dispatchers.IO) {
+        try {
+            val url = if (userId != null) {
+                "${NetworkConfig.BASE_URL}/docs-list?user_id=$userId"
+            } else {
+                "${NetworkConfig.BASE_URL}/docs-list"
+            }
+            val req = Request.Builder().url(url).build()
+            client.newCall(req).execute().use { resp ->
+                val respBody = resp.body?.string() ?: ""
+                if (resp.isSuccessful) {
+                    val type = object : TypeToken<List<DocumentEntry>>() {}.type
+                    val docs: List<DocumentEntry> = gson.fromJson(respBody, type) ?: emptyList()
+                    Result.success(docs)
+                } else {
+                    Result.failure(IOException(
+                        errorDetail(respBody) ?: "Failed to load documents (${resp.code})"
+                    ))
+                }
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * DELETE /documents/{user_id}/{filename} — removes the document and its indexed
+     * content for this user. Existing quiz/flashcard history built from it is kept.
+     */
+    suspend fun deleteDocument(userId: Int, filename: String): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val req = Request.Builder()
+                .url("${NetworkConfig.BASE_URL}/documents/$userId/${Uri.encode(filename)}")
+                .delete()
+                .build()
+            client.newCall(req).execute().use { resp ->
+                if (resp.isSuccessful) Result.success(Unit)
+                else Result.failure(IOException(
+                    errorDetail(resp.body?.string() ?: "") ?: "Delete failed (${resp.code})"
+                ))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * POST /flashcards — generate a new flashcard set. [count] should be one of
+     * 5/10/15/20 (matches the picker UI); [sourcePdf] null means "all documents".
+     */
+    suspend fun generateFlashcards(userId: Int?, sourcePdf: String?, count: Int): Result<FlashcardSet> = withContext(Dispatchers.IO) {
+        try {
+            val body = gson.toJson(FlashcardRequest(userId, sourcePdf, count)).toRequestBody(JSON_MEDIA)
+            val req  = Request.Builder()
+                .url("${NetworkConfig.BASE_URL}/flashcards")
+                .post(body)
+                .build()
+
+            client.newCall(req).execute().use { resp ->
+                val respBody = resp.body?.string() ?: ""
+                if (resp.isSuccessful) {
+                    val parsed = gson.fromJson(respBody, FlashcardGenerateResponse::class.java)
+                    val cards = parsed.cards.map { dto ->
+                        QuizQuestion(dto.question, dto.options, dto.correctIndex, dto.explanation)
+                    }
+                    Result.success(FlashcardSet(parsed.setId, cards))
+                } else {
+                    Result.failure(IOException(
+                        errorDetail(respBody) ?: "Flashcard generation failed (${resp.code})"
+                    ))
+                }
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /** GET /flashcards/{user_id} — this user's flashcard sets, for the History screen. */
+    suspend fun getFlashcardHistory(userId: Int): Result<List<FlashcardHistoryEntry>> = withContext(Dispatchers.IO) {
+        try {
+            val req = Request.Builder().url("${NetworkConfig.BASE_URL}/flashcards/$userId").build()
+            client.newCall(req).execute().use { resp ->
+                val respBody = resp.body?.string() ?: ""
+                if (resp.isSuccessful) {
+                    val type = object : TypeToken<List<FlashcardHistoryEntry>>() {}.type
+                    Result.success<List<FlashcardHistoryEntry>>(gson.fromJson(respBody, type) ?: emptyList())
+                } else {
+                    Result.failure(IOException(
+                        errorDetail(respBody) ?: "Failed to load flashcard history (${resp.code})"
+                    ))
+                }
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /** GET /flashcards/{user_id}/{set_id} — a saved set, opened read-only. */
+    suspend fun getFlashcardSet(userId: Int, setId: Int): Result<FlashcardSetDetail> = withContext(Dispatchers.IO) {
+        try {
+            val req = Request.Builder().url("${NetworkConfig.BASE_URL}/flashcards/$userId/$setId").build()
+            client.newCall(req).execute().use { resp ->
+                val respBody = resp.body?.string() ?: ""
+                if (resp.isSuccessful) {
+                    Result.success(gson.fromJson(respBody, FlashcardSetDetail::class.java))
+                } else {
+                    Result.failure(IOException(
+                        errorDetail(respBody) ?: "Failed to load flashcard set (${resp.code})"
+                    ))
+                }
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /** DELETE /flashcards/{user_id}/{set_id}. */
+    suspend fun deleteFlashcardSet(userId: Int, setId: Int): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val req = Request.Builder()
+                .url("${NetworkConfig.BASE_URL}/flashcards/$userId/$setId")
+                .delete()
+                .build()
+            client.newCall(req).execute().use { resp ->
+                if (resp.isSuccessful) Result.success(Unit)
+                else Result.failure(IOException(
+                    errorDetail(resp.body?.string() ?: "") ?: "Delete failed (${resp.code})"
+                ))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * POST /flashcard-reveal — record how many DISTINCT cards the user revealed in
+     * this set (not tap count) so Progress and History stay accurate.
+     */
+    suspend fun postFlashcardReveal(userId: Int, setId: Int, revealedCount: Int): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val body = gson.toJson(FlashcardRevealRequest(userId, setId, revealedCount)).toRequestBody(JSON_MEDIA)
+            val req  = Request.Builder()
+                .url("${NetworkConfig.BASE_URL}/flashcard-reveal")
+                .post(body)
+                .build()
+            client.newCall(req).execute().use { resp ->
+                if (resp.isSuccessful) Result.success(Unit)
+                else Result.failure(IOException(
+                    errorDetail(resp.body?.string() ?: "") ?: "Failed to save progress (${resp.code})"
+                ))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /** GET /quizzes/{user_id} — this user's saved quizzes, for the History screen. */
+    suspend fun getQuizHistory(userId: Int): Result<List<QuizHistoryEntry>> = withContext(Dispatchers.IO) {
+        try {
+            val req = Request.Builder().url("${NetworkConfig.BASE_URL}/quizzes/$userId").build()
+            client.newCall(req).execute().use { resp ->
+                val respBody = resp.body?.string() ?: ""
+                if (resp.isSuccessful) {
+                    val type = object : TypeToken<List<QuizHistoryEntry>>() {}.type
+                    Result.success<List<QuizHistoryEntry>>(gson.fromJson(respBody, type) ?: emptyList())
+                } else {
+                    Result.failure(IOException(
+                        errorDetail(respBody) ?: "Failed to load quiz history (${resp.code})"
+                    ))
+                }
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /** GET /quizzes/{user_id}/{quiz_id} — a saved quiz, opened read-only. */
+    suspend fun getQuizDetail(userId: Int, quizId: Int): Result<QuizDetail> = withContext(Dispatchers.IO) {
+        try {
+            val req = Request.Builder().url("${NetworkConfig.BASE_URL}/quizzes/$userId/$quizId").build()
+            client.newCall(req).execute().use { resp ->
+                val respBody = resp.body?.string() ?: ""
+                if (resp.isSuccessful) {
+                    Result.success(gson.fromJson(respBody, QuizDetail::class.java))
+                } else {
+                    Result.failure(IOException(
+                        errorDetail(respBody) ?: "Failed to load quiz (${resp.code})"
+                    ))
+                }
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /** DELETE /quizzes/{user_id}/{quiz_id}. */
+    suspend fun deleteQuiz(userId: Int, quizId: Int): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val req = Request.Builder()
+                .url("${NetworkConfig.BASE_URL}/quizzes/$userId/$quizId")
+                .delete()
+                .build()
+            client.newCall(req).execute().use { resp ->
+                if (resp.isSuccessful) Result.success(Unit)
+                else Result.failure(IOException(
+                    errorDetail(resp.body?.string() ?: "") ?: "Delete failed (${resp.code})"
+                ))
             }
         } catch (e: Exception) {
             Result.failure(e)
