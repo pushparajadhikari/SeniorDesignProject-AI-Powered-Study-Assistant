@@ -49,12 +49,9 @@ data class ChatMessage(
 fun ChatScreen(onBack: () -> Unit, onHistory: () -> Unit = {}, showBackButton: Boolean = true) {
 
     val context = LocalContext.current
-    // Server-assigned user id (null if offline) — lets the backend scope chat to this user's docs.
+    // Server-assigned user id (null if offline) — lets the backend scope chat to this user's docs,
+    // and is the key chat history is persisted locally under.
     val serverId = remember { UserManager.getCurrentSession(context)?.serverId }
-
-    // Unique session ID for this chat session — enables multi-turn conversation memory on the backend.
-    // A var so "clear session" can generate a fresh UUID and start a brand-new conversation.
-    var sessionId by remember { mutableStateOf(UUID.randomUUID().toString()) }
 
     // The greeting the chat always opens with — also used to reset the list on clear.
     val welcomeMessage = ChatMessage(
@@ -62,18 +59,35 @@ fun ChatScreen(onBack: () -> Unit, onHistory: () -> Unit = {}, showBackButton: B
         isUser = false
     )
 
+    // Restored once per composition from this user's saved chat (if any) — this is what lets
+    // the conversation survive leaving the Chat tab or killing the app; logout clears it.
+    val restored = remember { ChatHistoryStore.load(context, serverId) }
+
+    // Unique session ID for this chat session — enables multi-turn conversation memory on the backend.
+    // A var so "clear session" can generate a fresh UUID and start a brand-new conversation.
+    var sessionId by remember { mutableStateOf(restored?.sessionId ?: UUID.randomUUID().toString()) }
+
     var inputText by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
-    val messages  = remember { mutableStateListOf(welcomeMessage) }
+    val messages  = remember {
+        mutableStateListOf<ChatMessage>().apply {
+            addAll(restored?.messages?.takeIf { it.isNotEmpty() } ?: listOf(welcomeMessage))
+        }
+    }
 
     val listState = rememberLazyListState()
     val scope     = rememberCoroutineScope()
+
+    fun persist() {
+        ChatHistoryStore.save(context, serverId, ChatPersistedState(sessionId, messages.toList()))
+    }
 
     fun sendMessage() {
         val question = inputText.trim()
         if (question.isEmpty() || isLoading) return
 
         messages.add(ChatMessage(text = question, isUser = true))
+        persist()
         inputText = ""
         isLoading = true
 
@@ -93,6 +107,7 @@ fun ChatScreen(onBack: () -> Unit, onHistory: () -> Unit = {}, showBackButton: B
                         )
                     )
                 }
+            persist()
 
             isLoading = false
             listState.animateScrollToItem(messages.lastIndex)
@@ -106,6 +121,7 @@ fun ChatScreen(onBack: () -> Unit, onHistory: () -> Unit = {}, showBackButton: B
         messages.add(welcomeMessage)
         // Start a fresh session so the backend treats the next question as a new conversation.
         sessionId = UUID.randomUUID().toString()
+        persist()
         scope.launch {
             ApiService.clearSession(oldSession)
         }

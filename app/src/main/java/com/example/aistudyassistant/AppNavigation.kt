@@ -6,13 +6,16 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.example.aistudyassistant.auth.UserManager
+import com.example.aistudyassistant.network.ApiService
 import com.example.aistudyassistant.screens.*
+import kotlinx.coroutines.launch
 
 @Composable
 fun AppNavigation() {
 
     val context       = LocalContext.current
     val navController = rememberNavController()
+    val scope         = rememberCoroutineScope()
 
     // Auto-navigate: if already logged in skip onboarding and auth
     val startDestination = remember {
@@ -84,7 +87,17 @@ fun AppNavigation() {
                 onUploadClick  = { navController.navigate("upload") },
                 onHistoryClick = { navController.navigate("history") },
                 onLogout       = {
+                    // Capture before UserManager.logout() clears the session, then wipe
+                    // all three places a previous user's chat could linger: the local
+                    // JSON, this composable subtree (destroyed by popUpTo below), and
+                    // the backend's conversation memory for that chat session.
+                    val loggedOutServerId = session.serverId
+                    val chatState         = ChatHistoryStore.load(context, loggedOutServerId)
                     UserManager.logout(context)
+                    ChatHistoryStore.clear(context, loggedOutServerId)
+                    chatState?.sessionId?.let { sid ->
+                        scope.launch { ApiService.clearSession(sid) }
+                    }
                     navController.navigate("auth") {
                         popUpTo("main") { inclusive = true }
                     }
