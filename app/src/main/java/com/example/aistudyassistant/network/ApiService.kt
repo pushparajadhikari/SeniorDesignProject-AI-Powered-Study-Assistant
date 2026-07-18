@@ -3,6 +3,7 @@ package com.example.aistudyassistant.network
 import android.content.Context
 import android.net.Uri
 import android.util.Log
+import com.example.aistudyassistant.BuildConfig
 import com.example.aistudyassistant.models.DocumentEntry
 import com.example.aistudyassistant.models.FlashcardHistoryEntry
 import com.example.aistudyassistant.models.FlashcardSet
@@ -271,6 +272,11 @@ object ApiService {
             val inputStream = context.contentResolver.openInputStream(uri)
                 ?: return@withContext Result.failure(IOException("Cannot open file URI"))
             val bytes = inputStream.use { it.readBytes() }
+
+            // Temporary: independent proof in Logcat of the exact filename sent, after a
+            // prior fix for the "document:1000001067" bug turned out not to be wired in.
+            // Debug-gated, not stripped, so it stays available for the next device test.
+            if (BuildConfig.DEBUG) Log.d(TAG, "Uploading with filename: $filename")
 
             val multipart = MultipartBody.Builder()
                 .setType(MultipartBody.FORM)

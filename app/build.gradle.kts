@@ -35,7 +35,8 @@ android {
         jvmTarget = "11"
     }
     buildFeatures {
-        compose = true
+        compose     = true
+        buildConfig = true
     }
 }
 

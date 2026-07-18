@@ -1,6 +1,8 @@
 package com.example.aistudyassistant.screens
 
+import android.content.Context
 import android.net.Uri
+import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -61,7 +63,7 @@ fun UploadPdfScreen(onBack: () -> Unit) {
     ) { uri: Uri? ->
         if (uri != null) {
             selectedUri      = uri
-            selectedFileName = uri.lastPathSegment?.substringAfterLast("/") ?: "document.pdf"
+            selectedFileName = resolveDisplayName(context, uri)
             uploadState      = UploadState.Idle
         }
     }
@@ -332,4 +334,18 @@ private fun TipRow(emoji: String, text: String) {
         Spacer(Modifier.width(8.dp))
         Text(text, fontSize = 13.sp, color = TextSecondary)
     }
+}
+
+/**
+ * Resolves a picked content:// Uri to its real display name (e.g. "lecture1.pdf") via
+ * the content resolver's DISPLAY_NAME column — [Uri.lastPathSegment] returns an opaque
+ * path fragment like "document:1000001067" for SAF Uris, not a filename, and was
+ * previously (wrongly) used directly as the uploaded document's stored name.
+ */
+private fun resolveDisplayName(context: Context, uri: Uri): String {
+    val resolved = context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+        ?.use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
+        ?: uri.lastPathSegment?.substringAfterLast('/')
+        ?: "document.pdf"
+    return if (resolved.endsWith(".pdf", ignoreCase = true)) resolved else "$resolved.pdf"
 }
