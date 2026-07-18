@@ -21,45 +21,60 @@ data class DocumentEntry(
     val timestamp: String = ""
 )
 
-/** POST /flashcards response — a freshly generated set. */
+/**
+ * POST /flashcards response — a freshly generated set.
+ * Set ids are server-generated strings like "f_20260718_090128", not integers —
+ * confirmed 2026-07-18 against the reset backend; an earlier assumption of Int cost
+ * a debugging round, so don't reintroduce it.
+ */
 data class FlashcardSet(
-    @SerializedName("set_id") val setId: Int,
+    val id: String = "",
+    @SerializedName("source_pdf") val sourcePdf: String? = null,
+    @SerializedName("created_at") val createdAt: String  = "",
     val cards: List<QuizQuestion> = emptyList()
 )
 
-/** One row of GET /flashcards/{user_id} — the Flashcards history index. */
+/** One row of GET /flashcards/{user_id} — wrapped in {"flashcard_sets": [...]}, not a bare array. */
 data class FlashcardHistoryEntry(
-    val id: Int = 0,
+    val id: String = "",
     @SerializedName("source_pdf")     val sourcePdf:      String? = null,
     @SerializedName("created_at")     val createdAt:      String  = "",
     @SerializedName("card_count")     val cardCount:      Int     = 0,
     @SerializedName("cards_revealed") val cardsRevealed:  Int     = 0
 )
 
-/** GET /flashcards/{user_id}/{set_id} — a saved set opened read-only. */
+/**
+ * GET /flashcards/{user_id}/{set_id} — a saved set opened read-only. This response has
+ * no cards_revealed field (that only lives on the history-index row), so it isn't modeled here.
+ */
 data class FlashcardSetDetail(
-    val id: Int = 0,
-    @SerializedName("source_pdf")     val sourcePdf:     String? = null,
-    @SerializedName("created_at")     val createdAt:     String  = "",
-    @SerializedName("cards_revealed") val cardsRevealed: Int     = 0,
+    val id: String = "",
+    @SerializedName("source_pdf") val sourcePdf: String? = null,
+    @SerializedName("created_at") val createdAt: String  = "",
     val cards: List<QuizQuestion> = emptyList()
 )
 
-/** One row of GET /quizzes/{user_id} — the Quizzes history index. */
+/**
+ * One row of GET /quizzes/{user_id} — wrapped in {"quizzes": [...]}, not a bare array.
+ * [correct] is null for a quiz that's been generated but not yet submitted via
+ * POST /quiz-result — that's a real, common state, not missing data.
+ */
 data class QuizHistoryEntry(
-    val id: Int = 0,
+    val id: String = "",
     @SerializedName("source_pdf")      val sourcePdf:      String? = null,
     @SerializedName("created_at")      val createdAt:      String  = "",
     @SerializedName("total_questions") val totalQuestions: Int     = 0,
-    val correct: Int = 0
+    val correct: Int? = null
 )
 
-/** GET /quizzes/{user_id}/{quiz_id} — a saved quiz opened read-only. */
+/**
+ * GET /quizzes/{user_id}/{quiz_id} — a saved quiz opened read-only. This response carries
+ * no score fields (those only live on the history-index row) — callers should pass the
+ * [QuizHistoryEntry] they already have alongside this for the score display.
+ */
 data class QuizDetail(
-    val id: Int = 0,
-    @SerializedName("source_pdf")      val sourcePdf:      String? = null,
-    @SerializedName("created_at")      val createdAt:      String  = "",
-    val correct: Int = 0,
-    @SerializedName("total_questions") val totalQuestions: Int = 0,
+    val id: String = "",
+    @SerializedName("source_pdf") val sourcePdf: String? = null,
+    @SerializedName("created_at") val createdAt: String  = "",
     val questions: List<QuizQuestion> = emptyList()
 )

@@ -52,15 +52,17 @@ fun ActivityHistoryScreen(onBack: () -> Unit) {
     val serverId = remember { UserManager.getCurrentSession(context)?.serverId }
 
     var tab                by remember { mutableStateOf(HistoryTab.QUIZZES) }
-    var openQuizId         by remember { mutableStateOf<Int?>(null) }
-    var openFlashcardSetId by remember { mutableStateOf<Int?>(null) }
+    // Holds the full entry, not just an id — GET /quizzes/{user_id}/{quiz_id} doesn't
+    // return the score, so the detail screen needs the score carried over from the row.
+    var openQuiz            by remember { mutableStateOf<QuizHistoryEntry?>(null) }
+    var openFlashcardSetId  by remember { mutableStateOf<String?>(null) }
 
-    if (openQuizId != null) {
-        QuizDetailScreen(userId = serverId, quizId = openQuizId!!, onBack = { openQuizId = null })
+    openQuiz?.let { entry ->
+        QuizDetailScreen(userId = serverId, entry = entry, onBack = { openQuiz = null })
         return
     }
-    if (openFlashcardSetId != null) {
-        FlashcardSetDetailScreen(userId = serverId, setId = openFlashcardSetId!!, onBack = { openFlashcardSetId = null })
+    openFlashcardSetId?.let { setId ->
+        FlashcardSetDetailScreen(userId = serverId, setId = setId, onBack = { openFlashcardSetId = null })
         return
     }
 
@@ -104,7 +106,7 @@ fun ActivityHistoryScreen(onBack: () -> Unit) {
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
             when (tab) {
-                HistoryTab.QUIZZES     -> QuizHistoryList(serverId, onOpen = { openQuizId = it })
+                HistoryTab.QUIZZES     -> QuizHistoryList(serverId, onOpen = { openQuiz = it })
                 HistoryTab.FLASHCARDS  -> FlashcardHistoryList(serverId, onOpen = { openFlashcardSetId = it })
             }
         }
@@ -114,7 +116,7 @@ fun ActivityHistoryScreen(onBack: () -> Unit) {
 // ── Quizzes tab ────────────────────────────────────────────────────────────────
 
 @Composable
-private fun QuizHistoryList(userId: Int?, onOpen: (Int) -> Unit) {
+private fun QuizHistoryList(userId: Int?, onOpen: (QuizHistoryEntry) -> Unit) {
     val scope = rememberCoroutineScope()
     var isLoading    by remember { mutableStateOf(true) }
     var entries      by remember { mutableStateOf<List<QuizHistoryEntry>>(emptyList()) }
@@ -173,11 +175,11 @@ private fun QuizHistoryList(userId: Int?, onOpen: (Int) -> Unit) {
             StaggeredEntranceItem(index = index, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
                 HistoryRow(
                     title       = entry.sourcePdf ?: "All documents",
-                    subtitle    = "${entry.correct} / ${entry.totalQuestions}",
+                    subtitle    = if (entry.correct != null) "${entry.correct} / ${entry.totalQuestions}" else "not yet taken",
                     dateLabel   = formatUploadDate(entry.createdAt),
                     icon        = Icons.Default.Description,
                     accentColor = BrandViolet,
-                    onClick     = { onOpen(entry.id) },
+                    onClick     = { onOpen(entry) },
                     onLongClick = { pendingDelete = entry }
                 )
             }
@@ -187,14 +189,14 @@ private fun QuizHistoryList(userId: Int?, onOpen: (Int) -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun QuizDetailScreen(userId: Int?, quizId: Int, onBack: () -> Unit) {
+private fun QuizDetailScreen(userId: Int?, entry: QuizHistoryEntry, onBack: () -> Unit) {
     var isLoading    by remember { mutableStateOf(true) }
     var detail       by remember { mutableStateOf<QuizDetail?>(null) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
-    LaunchedEffect(userId, quizId) {
+    LaunchedEffect(userId, entry.id) {
         if (userId == null) { isLoading = false; errorMessage = "Please log in again"; return@LaunchedEffect }
-        ApiService.getQuizDetail(userId, quizId)
+        ApiService.getQuizDetail(userId, entry.id)
             .onSuccess { detail = it; isLoading = false }
             .onFailure { errorMessage = it.message ?: "Failed to load this quiz"; isLoading = false }
     }
@@ -232,8 +234,11 @@ private fun QuizDetailScreen(userId: Int?, quizId: Int, onBack: () -> Unit) {
                             colors = CardDefaults.cardColors(containerColor = BrandBlue),
                             modifier = Modifier.fillMaxWidth()
                         ) {
+                            // The detail endpoint doesn't return a score — it's carried
+                            // over from the history-index row that opened this screen.
+                            val scoreText = if (entry.correct != null) "${entry.correct} / ${entry.totalQuestions} correct" else "Not yet taken"
                             Text(
-                                "${d.correct} / ${d.totalQuestions} correct",
+                                scoreText,
                                 color      = Color.White,
                                 fontWeight = FontWeight.Bold,
                                 fontSize   = 18.sp,
@@ -261,7 +266,7 @@ private fun QuizDetailScreen(userId: Int?, quizId: Int, onBack: () -> Unit) {
 // ── Flashcards tab ───────────────────────────────────────────────────────────
 
 @Composable
-private fun FlashcardHistoryList(userId: Int?, onOpen: (Int) -> Unit) {
+private fun FlashcardHistoryList(userId: Int?, onOpen: (String) -> Unit) {
     val scope = rememberCoroutineScope()
     var isLoading    by remember { mutableStateOf(true) }
     var entries      by remember { mutableStateOf<List<FlashcardHistoryEntry>>(emptyList()) }
@@ -334,7 +339,7 @@ private fun FlashcardHistoryList(userId: Int?, onOpen: (Int) -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun FlashcardSetDetailScreen(userId: Int?, setId: Int, onBack: () -> Unit) {
+private fun FlashcardSetDetailScreen(userId: Int?, setId: String, onBack: () -> Unit) {
     var isLoading    by remember { mutableStateOf(true) }
     var detail       by remember { mutableStateOf<FlashcardSetDetail?>(null) }
     var errorMessage by remember { mutableStateOf<String?>(null) }

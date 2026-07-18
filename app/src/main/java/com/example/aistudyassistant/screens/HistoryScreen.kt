@@ -49,7 +49,9 @@ data class PdfUpload(
 
 data class QuizResult(
     @SerializedName("total_questions") val total:   Int = 0,
-    @SerializedName("correct")         val correct: Int = 0,
+    // Null for a quiz that's been generated but not yet submitted via /quiz-result —
+    // confirmed 2026-07-18, a real and common state, not missing data.
+    @SerializedName("correct")         val correct: Int? = null,
     @SerializedName(value = "timestamp", alternate = ["taken_at"]) val takenAt: String = ""
 )
 
@@ -259,12 +261,12 @@ fun HistoryScreen(userId: Int?) {
                             modifier          = Modifier.padding(14.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            val perfect = quiz.total > 0 && quiz.correct == quiz.total
+                            val perfect = quiz.correct != null && quiz.total > 0 && quiz.correct == quiz.total
                             Text(if (perfect) "🏆" else "📊", fontSize = 22.sp)
                             Spacer(Modifier.width(12.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    "${quiz.correct} / ${quiz.total} correct",
+                                    if (quiz.correct != null) "${quiz.correct} / ${quiz.total} correct" else "${quiz.total} questions — not yet taken",
                                     fontSize   = 14.sp,
                                     fontWeight = FontWeight.SemiBold,
                                     color      = TextPrimary

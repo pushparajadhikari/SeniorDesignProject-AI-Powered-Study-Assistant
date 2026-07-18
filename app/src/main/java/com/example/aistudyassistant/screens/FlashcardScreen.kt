@@ -84,7 +84,7 @@ fun FlashcardScreen(onBack: () -> Unit, onUploadClick: () -> Unit) {
         val uid = serverId ?: return
         // Reported as each new card is revealed (not only on exit) so the count is
         // never lost if the user backgrounds the app instead of tapping Back.
-        scope.launch { ApiService.postFlashcardReveal(uid, set.setId, revealedIndices.size) }
+        scope.launch { ApiService.postFlashcardReveal(uid, set.id, revealedIndices.size) }
     }
 
     val sourceLabel = when (val s = pdfSource) {

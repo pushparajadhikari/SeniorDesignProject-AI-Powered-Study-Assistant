@@ -13,7 +13,6 @@ import com.example.aistudyassistant.models.QuizQuestion
 import com.example.aistudyassistant.screens.UserProgress
 import com.google.gson.Gson
 import com.google.gson.annotations.SerializedName
-import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.*
@@ -59,7 +58,7 @@ object ApiService {
 
     private data class FlashcardRevealRequest(
         @SerializedName("user_id")        val userId:        Int,
-        @SerializedName("set_id")         val setId:         Int,
+        @SerializedName("set_id")         val setId:         String,
         @SerializedName("revealed_count") val revealedCount: Int
     )
 
@@ -114,8 +113,11 @@ object ApiService {
 
     // Internal (not private) so DocsListParsingTest exercises the exact class ApiService
     // parses against, rather than a hand-copied mirror that could drift from it.
+    // Confirmed 2026-07-18 against the reset backend: documents is a list of
+    // {filename, timestamp} objects, not plain strings — a second flip on this same
+    // field after an earlier round wrongly "fixed" it to bare strings.
     internal data class DocsListResponse(
-        val documents: List<String> = emptyList()
+        val documents: List<DocumentEntry> = emptyList()
     )
 
     private data class QuizQuestionDto(
@@ -126,20 +128,35 @@ object ApiService {
     )
 
     private data class QuizResponse(
-        @SerializedName("quiz_id") val quizId: Int? = null,
         val questions: List<QuizQuestionDto>
     )
 
-    private data class FlashcardCardDto(
+    // Internal (not private) because FlashcardGenerateResponse below is internal and
+    // exposes this type in its `cards` field — Kotlin requires matching visibility.
+    internal data class FlashcardCardDto(
         val question:    String,
         val options:     List<String>,
         @SerializedName("correct_index") val correctIndex: Int,
         val explanation: String
     )
 
-    private data class FlashcardGenerateResponse(
-        @SerializedName("set_id") val setId: Int,
-        val cards: List<FlashcardCardDto>
+    // Confirmed 2026-07-18: POST /flashcards returns {id, source_pdf, created_at, cards} —
+    // id is a server-generated string ("f_20260718_090128"), not "set_id"/Int as first assumed.
+    internal data class FlashcardGenerateResponse(
+        val id: String = "",
+        @SerializedName("source_pdf") val sourcePdf: String? = null,
+        @SerializedName("created_at") val createdAt: String  = "",
+        val cards: List<FlashcardCardDto> = emptyList()
+    )
+
+    // Confirmed 2026-07-18: both history-index endpoints wrap their array in an object
+    // keyed by resource name, not a bare array — same class of mismatch as docs-list.
+    private data class FlashcardHistoryResponse(
+        @SerializedName("flashcard_sets") val flashcardSets: List<FlashcardHistoryEntry> = emptyList()
+    )
+
+    private data class QuizHistoryResponse(
+        val quizzes: List<QuizHistoryEntry> = emptyList()
     )
 
     private data class UploadProgressResponse(
@@ -183,23 +200,30 @@ object ApiService {
     }
 
     // ── Pure JSON parsing (no I/O) — pinned by unit tests in src/test ───────────
-    // The actual wire contract, confirmed 2026-07-17 against the live server:
-    // GET /docs-list -> {"documents": ["file.pdf", ...]} — plain filenames, no
-    // per-document timestamp yet, unlike what an earlier spec assumed.
+    // The actual wire contracts below were confirmed 2026-07-18 against a freshly reset
+    // live backend by capturing real curl responses — not hand-typed from a spec. Two
+    // earlier rounds got this wrong by assuming instead of capturing; don't repeat that.
 
+    /** GET /docs-list -> {"documents": [{"filename": "...", "timestamp": "..."}]}. */
     internal fun parseDocsList(json: String): List<DocumentEntry> {
-        val wrapper = gson.fromJson(json, DocsListResponse::class.java) ?: DocsListResponse()
-        return wrapper.documents.map { filename -> DocumentEntry(filename = filename, timestamp = "") }
+        return (gson.fromJson(json, DocsListResponse::class.java) ?: DocsListResponse()).documents
     }
 
+    /** GET /flashcards/{user_id} -> {"flashcard_sets": [...]}, not a bare array. */
     internal fun parseFlashcardHistoryJson(json: String): List<FlashcardHistoryEntry> {
-        val type = object : TypeToken<List<FlashcardHistoryEntry>>() {}.type
-        return gson.fromJson(json, type) ?: emptyList()
+        return (gson.fromJson(json, FlashcardHistoryResponse::class.java) ?: FlashcardHistoryResponse()).flashcardSets
     }
 
+    /** GET /quizzes/{user_id} -> {"quizzes": [...]}, not a bare array. */
     internal fun parseQuizHistoryJson(json: String): List<QuizHistoryEntry> {
-        val type = object : TypeToken<List<QuizHistoryEntry>>() {}.type
-        return gson.fromJson(json, type) ?: emptyList()
+        return (gson.fromJson(json, QuizHistoryResponse::class.java) ?: QuizHistoryResponse()).quizzes
+    }
+
+    /** POST /flashcards -> {"id": "f_...", "source_pdf": ..., "created_at": ..., "cards": [...]}. */
+    internal fun parseFlashcardGenerateResponse(json: String): FlashcardSet {
+        val parsed = gson.fromJson(json, FlashcardGenerateResponse::class.java) ?: FlashcardGenerateResponse()
+        val cards = parsed.cards.map { dto -> QuizQuestion(dto.question, dto.options, dto.correctIndex, dto.explanation) }
+        return FlashcardSet(parsed.id, parsed.sourcePdf, parsed.createdAt, cards)
     }
 
     // ── Public API ────────────────────────────────────────────────────────────
@@ -605,11 +629,7 @@ object ApiService {
             client.newCall(req).execute().use { resp ->
                 val respBody = resp.body?.string() ?: ""
                 if (resp.isSuccessful) {
-                    val parsed = gson.fromJson(respBody, FlashcardGenerateResponse::class.java)
-                    val cards = parsed.cards.map { dto ->
-                        QuizQuestion(dto.question, dto.options, dto.correctIndex, dto.explanation)
-                    }
-                    Result.success(FlashcardSet(parsed.setId, cards))
+                    Result.success(parseFlashcardGenerateResponse(respBody))
                 } else {
                     friendlyHttpFailure(resp, respBody, "Flashcard generation failed (${resp.code})")
                 }
@@ -637,9 +657,9 @@ object ApiService {
     }
 
     /** GET /flashcards/{user_id}/{set_id} — a saved set, opened read-only. */
-    suspend fun getFlashcardSet(userId: Int, setId: Int): Result<FlashcardSetDetail> = withContext(Dispatchers.IO) {
+    suspend fun getFlashcardSet(userId: Int, setId: String): Result<FlashcardSetDetail> = withContext(Dispatchers.IO) {
         try {
-            val req = Request.Builder().url("${NetworkConfig.BASE_URL}/flashcards/$userId/$setId").build()
+            val req = Request.Builder().url("${NetworkConfig.BASE_URL}/flashcards/$userId/${Uri.encode(setId)}").build()
             client.newCall(req).execute().use { resp ->
                 val respBody = resp.body?.string() ?: ""
                 if (resp.isSuccessful) {
@@ -654,10 +674,10 @@ object ApiService {
     }
 
     /** DELETE /flashcards/{user_id}/{set_id}. */
-    suspend fun deleteFlashcardSet(userId: Int, setId: Int): Result<Unit> = withContext(Dispatchers.IO) {
+    suspend fun deleteFlashcardSet(userId: Int, setId: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             val req = Request.Builder()
-                .url("${NetworkConfig.BASE_URL}/flashcards/$userId/$setId")
+                .url("${NetworkConfig.BASE_URL}/flashcards/$userId/${Uri.encode(setId)}")
                 .delete()
                 .build()
             client.newCall(req).execute().use { resp ->
@@ -673,7 +693,7 @@ object ApiService {
      * POST /flashcard-reveal — record how many DISTINCT cards the user revealed in
      * this set (not tap count) so Progress and History stay accurate.
      */
-    suspend fun postFlashcardReveal(userId: Int, setId: Int, revealedCount: Int): Result<Unit> = withContext(Dispatchers.IO) {
+    suspend fun postFlashcardReveal(userId: Int, setId: String, revealedCount: Int): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             val body = gson.toJson(FlashcardRevealRequest(userId, setId, revealedCount)).toRequestBody(JSON_MEDIA)
             val req  = Request.Builder()
@@ -707,9 +727,9 @@ object ApiService {
     }
 
     /** GET /quizzes/{user_id}/{quiz_id} — a saved quiz, opened read-only. */
-    suspend fun getQuizDetail(userId: Int, quizId: Int): Result<QuizDetail> = withContext(Dispatchers.IO) {
+    suspend fun getQuizDetail(userId: Int, quizId: String): Result<QuizDetail> = withContext(Dispatchers.IO) {
         try {
-            val req = Request.Builder().url("${NetworkConfig.BASE_URL}/quizzes/$userId/$quizId").build()
+            val req = Request.Builder().url("${NetworkConfig.BASE_URL}/quizzes/$userId/${Uri.encode(quizId)}").build()
             client.newCall(req).execute().use { resp ->
                 val respBody = resp.body?.string() ?: ""
                 if (resp.isSuccessful) {
@@ -724,10 +744,10 @@ object ApiService {
     }
 
     /** DELETE /quizzes/{user_id}/{quiz_id}. */
-    suspend fun deleteQuiz(userId: Int, quizId: Int): Result<Unit> = withContext(Dispatchers.IO) {
+    suspend fun deleteQuiz(userId: Int, quizId: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             val req = Request.Builder()
-                .url("${NetworkConfig.BASE_URL}/quizzes/$userId/$quizId")
+                .url("${NetworkConfig.BASE_URL}/quizzes/$userId/${Uri.encode(quizId)}")
                 .delete()
                 .build()
             client.newCall(req).execute().use { resp ->
