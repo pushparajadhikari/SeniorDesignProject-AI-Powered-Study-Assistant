@@ -9,6 +9,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Style
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -268,6 +269,43 @@ fun HistoryScreen(userId: Int?) {
                                 if (quiz.createdAt.isNotBlank()) {
                                     Text(formatUploadDate(quiz.createdAt), fontSize = 11.sp, color = TextSecondary)
                                 }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ── Flashcard sets ────────────────────────────────────────────────
+            item {
+                Text("Flashcard Sets", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+            }
+            if (data.flashcardSets.isEmpty()) {
+                item { EmptyCard("🗂️", "No flashcard sets yet", "Generate a set from a PDF and it will show up here") }
+            } else {
+                items(data.flashcardSets) { set ->
+                    Card(
+                        shape    = RoundedCornerShape(12.dp),
+                        colors   = CardDefaults.cardColors(containerColor = Color.White),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier          = Modifier.padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.Style, null, tint = BrandTeal, modifier = Modifier.size(22.dp))
+                            Spacer(Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    set.sourcePdf ?: "All documents",
+                                    fontSize   = 14.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color      = TextPrimary
+                                )
+                                Text(
+                                    "${set.cardsRevealed} of ${set.cardCount} revealed  ·  ${formatUploadDate(set.createdAt)}",
+                                    fontSize = 11.sp,
+                                    color    = TextSecondary
+                                )
                             }
                         }
                     }
