@@ -25,6 +25,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.aistudyassistant.auth.UserManager
+import com.example.aistudyassistant.models.DocumentUsage
 import com.example.aistudyassistant.network.ApiService
 import com.example.aistudyassistant.ui.animation.pressScale
 import com.example.aistudyassistant.ui.components.BrandLogoBadge
@@ -59,8 +60,15 @@ fun DashboardScreen(
     var refreshKey   by remember { mutableStateOf(0) }
 
     // ── Delete state ──────────────────────────────────────────────────────────
+    // Non-optimistic by design: the delete cascades to quizzes/flashcard sets built
+    // from this document, so the row is only removed after the server confirms —
+    // an optimistic removal that then failed would be far more confusing here than
+    // for a simple single-resource delete.
     var docPendingDelete by remember { mutableStateOf<String?>(null) }
-    var deleteError       by remember { mutableStateOf<String?>(null) }
+    var pendingUsage     by remember { mutableStateOf<DocumentUsage?>(null) }
+    var isCheckingUsage  by remember { mutableStateOf(false) }
+    var isDeleting       by remember { mutableStateOf(false) }
+    var deleteError      by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(deleteError) {
         if (deleteError != null) {
@@ -69,30 +77,71 @@ fun DashboardScreen(
         }
     }
 
-    fun deleteDocument(docName: String) {
+    fun startDeleteFlow(docName: String) {
         val uid = session?.serverId
         if (uid == null) {
             deleteError = "Sign in to manage documents"
             return
         }
-        val previousDocs = docs
-        docs = docs.filterNot { it == docName }   // optimistic
+        docPendingDelete = docName
+        pendingUsage     = null
+        isCheckingUsage  = true
         scope.launch {
-            ApiService.deleteDocument(uid, docName)
-                .onFailure { err ->
-                    docs        = previousDocs     // restore the row
-                    deleteError = err.message ?: "Could not delete \"$docName\""
+            // A failed usage check shouldn't block deleting — just falls back to the
+            // no-counts warning below instead of surfacing a second error mid-flow.
+            ApiService.getDocumentUsage(uid, docName).onSuccess { pendingUsage = it }
+            isCheckingUsage = false
+        }
+    }
+
+    fun confirmDelete() {
+        val name = docPendingDelete ?: return
+        val uid  = session?.serverId ?: return
+        isDeleting = true
+        scope.launch {
+            ApiService.deleteDocument(uid, name)
+                .onSuccess {
+                    docs             = docs.filterNot { it == name }   // only now, after confirmation
+                    docPendingDelete = null
+                    pendingUsage     = null
                 }
+                .onFailure { err ->
+                    deleteError      = err.message ?: "Could not delete \"$name\""
+                    docPendingDelete = null
+                    pendingUsage     = null
+                }
+            isDeleting = false
         }
     }
 
     docPendingDelete?.let { name ->
-        DestructiveConfirmDialog(
-            title     = "Delete document?",
-            message   = "This removes \"$name\" and its indexed content, so it can no longer be used for new quizzes or flashcards. Existing quiz and flashcard history from this PDF is kept.",
-            onConfirm = { deleteDocument(name); docPendingDelete = null },
-            onDismiss = { docPendingDelete = null }
-        )
+        if (isCheckingUsage) {
+            AlertDialog(
+                onDismissRequest = {},
+                confirmButton    = {},
+                text = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = AccentRed)
+                        Spacer(Modifier.width(12.dp))
+                        Text("Checking what \"$name\" is used in…")
+                    }
+                }
+            )
+        } else {
+            val usage       = pendingUsage
+            val cascadeCount = (usage?.quizCount ?: 0) + (usage?.flashcardCount ?: 0)
+            val message = if (cascadeCount > 0) {
+                "Delete \"$name\"? This will also permanently delete ${usage!!.quizCount} quiz(zes) and ${usage.flashcardCount} flashcard set(s) generated from it. This cannot be undone."
+            } else {
+                "Delete \"$name\"? This cannot be undone."
+            }
+            DestructiveConfirmDialog(
+                title     = "Delete document?",
+                message   = if (isDeleting) "Deleting…" else message,
+                onConfirm = { if (!isDeleting) confirmDelete() },
+                onDismiss = { if (!isDeleting) { docPendingDelete = null; pendingUsage = null } }
+            )
+        }
     }
 
     LaunchedEffect(refreshKey) {
@@ -289,7 +338,7 @@ fun DashboardScreen(
                                 .padding(vertical = 4.dp)
                                 .combinedClickable(
                                     onClick     = {},
-                                    onLongClick = { docPendingDelete = docName }
+                                    onLongClick = { startDeleteFlow(docName) }
                                 )
                         ) {
                             Row(

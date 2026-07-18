@@ -21,6 +21,12 @@ data class DocumentEntry(
     val timestamp: String = ""
 )
 
+/** GET /documents/{user_id}/{filename}/usage — what deleting this document would also delete. */
+data class DocumentUsage(
+    @SerializedName("quiz_count")      val quizCount:      Int = 0,
+    @SerializedName("flashcard_count") val flashcardCount: Int = 0
+)
+
 /**
  * POST /flashcards response — a freshly generated set.
  * Set ids are server-generated strings like "f_20260718_090128", not integers —

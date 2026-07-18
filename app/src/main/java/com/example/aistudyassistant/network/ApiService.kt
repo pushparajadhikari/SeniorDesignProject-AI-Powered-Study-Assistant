@@ -5,6 +5,7 @@ import android.net.Uri
 import android.util.Log
 import com.example.aistudyassistant.BuildConfig
 import com.example.aistudyassistant.models.DocumentEntry
+import com.example.aistudyassistant.models.DocumentUsage
 import com.example.aistudyassistant.models.FlashcardHistoryEntry
 import com.example.aistudyassistant.models.FlashcardSet
 import com.example.aistudyassistant.models.FlashcardSetDetail
@@ -617,8 +618,30 @@ object ApiService {
     }
 
     /**
+     * GET /documents/{user_id}/{filename}/usage — how many quizzes and flashcard sets
+     * were generated from this document, so a delete confirmation can warn about the
+     * cascade before the user commits to it.
+     */
+    suspend fun getDocumentUsage(userId: Int, filename: String): Result<DocumentUsage> = withContext(Dispatchers.IO) {
+        try {
+            val req = Request.Builder()
+                .url("${NetworkConfig.BASE_URL}/documents/$userId/${Uri.encode(filename)}/usage")
+                .build()
+            client.newCall(req).execute().use { resp ->
+                val respBody = resp.body?.string() ?: ""
+                if (resp.isSuccessful) Result.success(gson.fromJson(respBody, DocumentUsage::class.java))
+                else friendlyHttpFailure(resp, respBody, "Failed to check document usage (${resp.code})")
+            }
+        } catch (e: Exception) {
+            logAndFail("getDocumentUsage", e)
+        }
+    }
+
+    /**
      * DELETE /documents/{user_id}/{filename} — removes the document and its indexed
-     * content for this user. Existing quiz/flashcard history built from it is kept.
+     * content, AND cascades to delete every quiz and flashcard set generated from it.
+     * Confirmed 2026-07-18: this reverses an earlier assumption that history was kept —
+     * callers must warn about the cascade before calling this (see [getDocumentUsage]).
      */
     suspend fun deleteDocument(userId: Int, filename: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
