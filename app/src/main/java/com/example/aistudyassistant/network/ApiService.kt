@@ -232,6 +232,15 @@ object ApiService {
         return FlashcardSet(parsed.id, parsed.sourcePdf, parsed.createdAt, cards)
     }
 
+    /**
+     * GET /progress/{user_id}. Confirmed 2026-07-18: flashcard_sets is an array of the
+     * same {id, source_pdf, created_at, card_count, cards_revealed} objects flashcard
+     * history uses — it was wrongly modeled as an Int, which crashed every Progress load.
+     */
+    internal fun parseProgress(json: String): UserProgress {
+        return gson.fromJson(json, UserProgress::class.java) ?: UserProgress()
+    }
+
     // ── Public API ────────────────────────────────────────────────────────────
 
     /**
@@ -565,7 +574,7 @@ object ApiService {
             client.newCall(req).execute().use { resp ->
                 val respBody = resp.body?.string() ?: ""
                 if (resp.isSuccessful) {
-                    Result.success(gson.fromJson(respBody, UserProgress::class.java))
+                    Result.success(parseProgress(respBody))
                 } else {
                     friendlyHttpFailure(resp, respBody, "Failed to load progress (${resp.code})")
                 }

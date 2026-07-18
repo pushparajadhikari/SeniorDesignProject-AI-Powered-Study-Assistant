@@ -19,6 +19,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.aistudyassistant.models.DocumentEntry
+import com.example.aistudyassistant.models.FlashcardHistoryEntry
+import com.example.aistudyassistant.models.QuizHistoryEntry
 import com.example.aistudyassistant.network.ApiService
 import com.example.aistudyassistant.ui.animation.CountUpText
 import com.example.aistudyassistant.ui.components.BrandLogoMark
@@ -26,33 +29,24 @@ import com.example.aistudyassistant.ui.components.formatUploadDate
 import com.example.aistudyassistant.ui.theme.*
 import com.google.gson.annotations.SerializedName
 
-// ── Data models ───────────────────────────────────────────────────────────────
-// Shared with ApiService.getProgress(). @SerializedName maps the backend's
-// snake_case JSON onto these camelCase properties. Every field defaults so a
-// partial/empty response from the backend deserializes without crashing.
+// ── Data model ────────────────────────────────────────────────────────────────
+// Shared with ApiService.getProgress(). Confirmed 2026-07-18 against the live,
+// locked-response_model backend. pdfs_uploaded and quiz_history/flashcard_sets now
+// have the exact same shape as the picker/history-screen models, so this reuses
+// DocumentEntry/QuizHistoryEntry/FlashcardHistoryEntry instead of near-duplicating
+// them as PdfUpload/QuizResult — those two are gone.
+//
+// flashcard_sets was previously (wrongly) modeled as an Int; it's actually the same
+// array of objects flashcard history uses. That mismatch was the parse crash behind
+// "Could not load progress / Couldn't read the server's response."
 
 data class UserProgress(
-    @SerializedName("pdfs_uploaded")             val pdfsUploaded:            List<PdfUpload>  = emptyList(),
-    @SerializedName("quiz_history")              val quizHistory:             List<QuizResult> = emptyList(),
+    @SerializedName("pdfs_uploaded")             val pdfsUploaded:            List<DocumentEntry>         = emptyList(),
+    @SerializedName("quiz_history")              val quizHistory:             List<QuizHistoryEntry>      = emptyList(),
     @SerializedName("questions_answered_total")  val questionsAnsweredTotal:  Int = 0,
     @SerializedName("questions_correct_total")   val questionsCorrectTotal:   Int = 0,
     @SerializedName("flashcards_revealed_total") val flashcardsRevealedTotal: Int = 0,
-    @SerializedName("flashcard_sets")            val flashcardSets:           Int = 0
-)
-
-data class PdfUpload(
-    @SerializedName("filename") val filename: String = "",
-    // Live backend actually sends "timestamp"; "uploaded_at" kept as a fallback in
-    // case that ever changes — this is exactly the field-name drift this fix guards.
-    @SerializedName(value = "timestamp", alternate = ["uploaded_at"]) val uploadedAt: String = ""
-)
-
-data class QuizResult(
-    @SerializedName("total_questions") val total:   Int = 0,
-    // Null for a quiz that's been generated but not yet submitted via /quiz-result —
-    // confirmed 2026-07-18, a real and common state, not missing data.
-    @SerializedName("correct")         val correct: Int? = null,
-    @SerializedName(value = "timestamp", alternate = ["taken_at"]) val takenAt: String = ""
+    @SerializedName("flashcard_sets")            val flashcardSets:           List<FlashcardHistoryEntry> = emptyList()
 )
 
 // ── Screen ────────────────────────────────────────────────────────────────────
@@ -235,8 +229,8 @@ fun HistoryScreen(userId: Int?) {
                                     fontWeight = FontWeight.Medium,
                                     color      = TextPrimary
                                 )
-                                if (pdf.uploadedAt.isNotBlank()) {
-                                    Text(formatUploadDate(pdf.uploadedAt), fontSize = 11.sp, color = TextSecondary)
+                                if (pdf.timestamp.isNotBlank()) {
+                                    Text(formatUploadDate(pdf.timestamp), fontSize = 11.sp, color = TextSecondary)
                                 }
                             }
                         }
@@ -261,18 +255,18 @@ fun HistoryScreen(userId: Int?) {
                             modifier          = Modifier.padding(14.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            val perfect = quiz.correct != null && quiz.total > 0 && quiz.correct == quiz.total
+                            val perfect = quiz.correct != null && quiz.totalQuestions > 0 && quiz.correct == quiz.totalQuestions
                             Text(if (perfect) "🏆" else "📊", fontSize = 22.sp)
                             Spacer(Modifier.width(12.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    if (quiz.correct != null) "${quiz.correct} / ${quiz.total} correct" else "${quiz.total} questions — not yet taken",
+                                    if (quiz.correct != null) "${quiz.correct} / ${quiz.totalQuestions} correct" else "${quiz.totalQuestions} questions — not yet taken",
                                     fontSize   = 14.sp,
                                     fontWeight = FontWeight.SemiBold,
                                     color      = TextPrimary
                                 )
-                                if (quiz.takenAt.isNotBlank()) {
-                                    Text(formatUploadDate(quiz.takenAt), fontSize = 11.sp, color = TextSecondary)
+                                if (quiz.createdAt.isNotBlank()) {
+                                    Text(formatUploadDate(quiz.createdAt), fontSize = 11.sp, color = TextSecondary)
                                 }
                             }
                         }
