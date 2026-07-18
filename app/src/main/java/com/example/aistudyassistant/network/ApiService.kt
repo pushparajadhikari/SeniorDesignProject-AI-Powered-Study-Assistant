@@ -193,8 +193,14 @@ object ApiService {
         return Result.failure(IOException(message, e))
     }
 
-    /** Non-2xx response -> a human message. 5xx is always generic; 4xx prefers the server's own detail. */
+    /**
+     * Non-2xx response -> a human message. Always logs the full body and status first —
+     * a 404/422/etc. with a real JSON body is still a silent failure to the user unless
+     * we log it here, even though it never throws. 5xx is generic; 4xx prefers the
+     * server's own `detail` message, which is usually specific enough to act on.
+     */
     private fun friendlyHttpFailure(resp: Response, body: String, fallback: String): Result<Nothing> {
+        Log.e(TAG, "HTTP ${resp.code} ${resp.request.url} -> $body")
         val message = if (resp.code >= 500) "The server had a problem. Try again." else errorDetail(body) ?: fallback
         return Result.failure(IOException(message))
     }
