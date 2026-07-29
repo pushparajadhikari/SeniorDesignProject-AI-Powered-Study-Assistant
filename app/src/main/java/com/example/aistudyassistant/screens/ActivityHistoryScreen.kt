@@ -131,7 +131,7 @@ private fun QuizHistoryList(userId: Int?, onOpen: (QuizHistoryEntry) -> Unit) {
         isLoading    = true
         errorMessage = null
         ApiService.getQuizHistory(userId)
-            .onSuccess { entries = it.sortedByDescending { e -> e.createdAt }; isLoading = false }
+            .onSuccess { entries = it.sortedByDescending { e -> e.createdAt ?: e.timestamp ?: "" }; isLoading = false }
             .onFailure { errorMessage = it.message ?: "Failed to load quiz history"; isLoading = false }
     }
 
@@ -176,7 +176,7 @@ private fun QuizHistoryList(userId: Int?, onOpen: (QuizHistoryEntry) -> Unit) {
                 HistoryRow(
                     title       = entry.sourcePdf ?: "All documents",
                     subtitle    = if (entry.correct != null) "${entry.correct} / ${entry.totalQuestions}" else "not yet taken",
-                    dateLabel   = formatUploadDate(entry.createdAt),
+                    dateLabel   = formatUploadDate(entry.createdAt ?: entry.timestamp ?: ""),
                     icon        = Icons.Default.Description,
                     accentColor = BrandViolet,
                     onClick     = { onOpen(entry) },

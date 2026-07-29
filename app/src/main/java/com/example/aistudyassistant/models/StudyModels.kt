@@ -68,7 +68,14 @@ data class FlashcardSetDetail(
 data class QuizHistoryEntry(
     val id: String = "",
     @SerializedName("source_pdf")      val sourcePdf:      String? = null,
-    @SerializedName("created_at")      val createdAt:      String  = "",
+    // Legacy quiz-result rows (written by POST /quiz-result with no quiz_id) send
+    // created_at:null and carry their date in a separate `timestamp` field instead.
+    // Both are nullable; callers fall back created_at -> timestamp. A bare Gson()
+    // ignores the non-null type + default and leaves a real null here, so declaring
+    // these non-null crashed the Progress screen. Confirmed 2026-07-28 against a live
+    // /progress payload.
+    @SerializedName("created_at")      val createdAt:      String? = null,
+    @SerializedName("timestamp")       val timestamp:      String? = null,
     @SerializedName("total_questions") val totalQuestions: Int     = 0,
     val correct: Int? = null
 )
