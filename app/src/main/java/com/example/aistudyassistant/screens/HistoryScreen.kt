@@ -41,13 +41,18 @@ import com.google.gson.annotations.SerializedName
 // array of objects flashcard history uses. That mismatch was the parse crash behind
 // "Could not load progress / Couldn't read the server's response."
 
+// Every field is nullable because a bare Gson() ignores Kotlin's non-null types and
+// these `= default`s: an omitted key or an explicit JSON null (e.g. a SUM()-derived
+// total that's null for a brand-new user, or a missing quiz_history array) lands here
+// as a real null regardless of the declared type. The screen coalesces each to a safe
+// default. Confirmed 2026-07-28 against a live /progress payload.
 data class UserProgress(
-    @SerializedName("pdfs_uploaded")             val pdfsUploaded:            List<DocumentEntry>         = emptyList(),
-    @SerializedName("quiz_history")              val quizHistory:             List<QuizHistoryEntry>      = emptyList(),
-    @SerializedName("questions_answered_total")  val questionsAnsweredTotal:  Int = 0,
-    @SerializedName("questions_correct_total")   val questionsCorrectTotal:   Int = 0,
-    @SerializedName("flashcards_revealed_total") val flashcardsRevealedTotal: Int = 0,
-    @SerializedName("flashcard_sets")            val flashcardSets:           List<FlashcardHistoryEntry> = emptyList()
+    @SerializedName("pdfs_uploaded")             val pdfsUploaded:            List<DocumentEntry>?         = emptyList(),
+    @SerializedName("quiz_history")              val quizHistory:             List<QuizHistoryEntry>?      = emptyList(),
+    @SerializedName("questions_answered_total")  val questionsAnsweredTotal:  Int? = 0,
+    @SerializedName("questions_correct_total")   val questionsCorrectTotal:   Int? = 0,
+    @SerializedName("flashcards_revealed_total") val flashcardsRevealedTotal: Int? = 0,
+    @SerializedName("flashcard_sets")            val flashcardSets:           List<FlashcardHistoryEntry>? = emptyList()
 )
 
 // ── Screen ────────────────────────────────────────────────────────────────────
@@ -168,11 +173,17 @@ fun HistoryScreen(userId: Int?) {
         }
 
         // ── Content ───────────────────────────────────────────────────────────
-        val data = progress ?: UserProgress()
-        val accuracy =
-            if (data.questionsAnsweredTotal > 0)
-                (data.questionsCorrectTotal * 100) / data.questionsAnsweredTotal
-            else 0
+        // Coalesce every nullable field once, up front, so nothing below can deref a
+        // null the backend legitimately sent (empty/omitted lists, null SUM() totals,
+        // sparse legacy quiz rows). See UserProgress for why these arrive as null.
+        val data      = progress ?: UserProgress()
+        val pdfs      = data.pdfsUploaded.orEmpty()
+        val quizzes   = data.quizHistory.orEmpty()
+        val sets      = data.flashcardSets.orEmpty()
+        val answered  = data.questionsAnsweredTotal ?: 0
+        val correct   = data.questionsCorrectTotal ?: 0
+        val revealed  = data.flashcardsRevealedTotal ?: 0
+        val accuracy  = if (answered > 0) (correct * 100) / answered else 0
 
         LazyColumn(
             modifier            = Modifier.fillMaxSize().padding(padding),
@@ -192,11 +203,11 @@ fun HistoryScreen(userId: Int?) {
                         modifier              = Modifier.fillMaxWidth().padding(20.dp),
                         horizontalArrangement = Arrangement.SpaceEvenly
                     ) {
-                        SummaryStat("${data.pdfsUploaded.size}", "PDFs", BrandTeal)
-                        SummaryStat("${data.quizHistory.size}", "Quizzes", BrandBlue)
+                        SummaryStat("${pdfs.size}", "PDFs", BrandTeal)
+                        SummaryStat("${quizzes.size}", "Quizzes", BrandBlue)
                         SummaryStat("$accuracy%", "Accuracy", BrandViolet)
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            CountUpText(targetValue = data.flashcardsRevealedTotal, fontSize = 22.sp, color = AccentGreen)
+                            CountUpText(targetValue = revealed, fontSize = 22.sp, color = AccentGreen)
                             Spacer(Modifier.height(2.dp))
                             Text("Answers Revealed", fontSize = 12.sp, color = TextSecondary)
                         }
@@ -208,10 +219,10 @@ fun HistoryScreen(userId: Int?) {
             item {
                 Text("Uploaded PDFs", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
             }
-            if (data.pdfsUploaded.isEmpty()) {
+            if (pdfs.isEmpty()) {
                 item { EmptyCard("📂", "No PDFs uploaded yet", "Upload a PDF to start building your library") }
             } else {
-                items(data.pdfsUploaded) { pdf ->
+                items(pdfs) { pdf ->
                     Card(
                         shape    = RoundedCornerShape(12.dp),
                         colors   = CardDefaults.cardColors(containerColor = Color.White),
@@ -243,10 +254,10 @@ fun HistoryScreen(userId: Int?) {
             item {
                 Text("Quiz History", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
             }
-            if (data.quizHistory.isEmpty()) {
+            if (quizzes.isEmpty()) {
                 item { EmptyCard("🎯", "No quizzes taken yet", "Finish a quiz and your score will show up here") }
             } else {
-                items(data.quizHistory) { quiz ->
+                items(quizzes) { quiz ->
                     Card(
                         shape    = RoundedCornerShape(12.dp),
                         colors   = CardDefaults.cardColors(containerColor = Color.White),
@@ -266,8 +277,11 @@ fun HistoryScreen(userId: Int?) {
                                     fontWeight = FontWeight.SemiBold,
                                     color      = TextPrimary
                                 )
-                                if (quiz.createdAt.isNotBlank()) {
-                                    Text(formatUploadDate(quiz.createdAt), fontSize = 11.sp, color = TextSecondary)
+                                // Generated rows have created_at; legacy quiz-result rows
+                                // have it null and carry the date in `timestamp` instead.
+                                val quizDate = quiz.createdAt ?: quiz.timestamp
+                                if (!quizDate.isNullOrBlank()) {
+                                    Text(formatUploadDate(quizDate), fontSize = 11.sp, color = TextSecondary)
                                 }
                             }
                         }
@@ -279,10 +293,10 @@ fun HistoryScreen(userId: Int?) {
             item {
                 Text("Flashcard Sets", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
             }
-            if (data.flashcardSets.isEmpty()) {
+            if (sets.isEmpty()) {
                 item { EmptyCard("🗂️", "No flashcard sets yet", "Generate a set from a PDF and it will show up here") }
             } else {
-                items(data.flashcardSets) { set ->
+                items(sets) { set ->
                     Card(
                         shape    = RoundedCornerShape(12.dp),
                         colors   = CardDefaults.cardColors(containerColor = Color.White),
