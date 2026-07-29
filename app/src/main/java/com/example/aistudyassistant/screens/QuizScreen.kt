@@ -45,36 +45,41 @@ fun QuizScreen(onBack: () -> Unit, showBackButton: Boolean = true, onUploadClick
 
     // Null until the user picks a source — both flows start with "which PDF?".
     var pdfSource        by remember { mutableStateOf<PdfSource?>(null) }
-    var isLoading        by remember { mutableStateOf(true) }
+    var isLoading        by remember { mutableStateOf(false) }
     var errorMessage     by remember { mutableStateOf<String?>(null) }
     var questions        by remember { mutableStateOf<List<QuizQuestion>>(emptyList()) }
     var selectedAnswers  by remember { mutableStateOf(mutableMapOf<Int, Int>()) }
     var showResults      by remember { mutableStateOf(false) }
-    var refreshKey       by remember { mutableStateOf(0) }   // increment to reload
     var numQuestions     by remember { mutableStateOf(5) }   // backend clamps to [1, 20]
 
     val score = selectedAnswers.entries.count { (qi, ai) ->
         questions.getOrNull(qi)?.correctIndex == ai
     }
 
-    // Regenerate whenever refresh is tapped, the count changes, or the source changes.
-    LaunchedEffect(pdfSource, refreshKey, numQuestions) {
-        val source = pdfSource ?: return@LaunchedEffect
+    // Generation is explicit — mirrors the Flashcards flow. Nothing is generated
+    // until the user taps "Generate Quiz" (or "Try Again"). Picking a source or
+    // changing the question count never regenerates on its own.
+    fun generateQuiz() {
+        val source = pdfSource ?: return
         isLoading       = true
         errorMessage    = null
+        questions       = emptyList()
         selectedAnswers = mutableMapOf()
         showResults     = false
-
         val sourceFilename = (source as? PdfSource.Specific)?.filename
-        ApiService.generateQuiz(serverId, numQuestions, sourceFilename)
-            .onSuccess { q ->
-                questions = q
-                isLoading = false
-            }
-            .onFailure { err ->
-                errorMessage = err.message ?: "Quiz generation failed"
-                isLoading    = false
-            }
+        scope.launch {
+            ApiService.generateQuiz(serverId, numQuestions, sourceFilename)
+                .onSuccess { q -> questions = q; isLoading = false }
+                .onFailure { err -> errorMessage = err.message ?: "Quiz generation failed"; isLoading = false }
+        }
+    }
+
+    // Clear a finished/active quiz and return to the count + "Generate Quiz" step.
+    fun resetToSetup() {
+        questions       = emptyList()
+        selectedAnswers = mutableMapOf()
+        showResults     = false
+        errorMessage    = null
     }
 
     val sourceLabel = when (val s = pdfSource) {
@@ -105,15 +110,16 @@ fun QuizScreen(onBack: () -> Unit, showBackButton: Boolean = true, onUploadClick
                 },
                 actions = {
                     if (pdfSource != null) {
-                        TextButton(onClick = { pdfSource = null }) {
+                        TextButton(onClick = { pdfSource = null; resetToSetup() }) {
                             Text("Change", color = BrandViolet, fontSize = 13.sp)
                         }
                     }
-                    IconButton(
-                        onClick  = { refreshKey++ },
-                        enabled  = !isLoading && pdfSource != null
-                    ) {
-                        Icon(Icons.Default.Refresh, "Regenerate quiz", tint = BrandTeal)
+                    // Only meaningful once a quiz exists — returns to the count +
+                    // Generate step rather than regenerating on the spot.
+                    if (questions.isNotEmpty()) {
+                        IconButton(onClick = { resetToSetup() }, enabled = !isLoading) {
+                            Icon(Icons.Default.Refresh, "New quiz", tint = BrandTeal)
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -141,28 +147,20 @@ fun QuizScreen(onBack: () -> Unit, showBackButton: Boolean = true, onUploadClick
 
         // ── Loading ───────────────────────────────────────────────────────
         if (isLoading) {
-            Column(
-                modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp)
+            Box(
+                modifier         = Modifier.fillMaxSize().padding(padding),
+                contentAlignment = Alignment.Center
             ) {
-                QuestionCountPicker(
-                    current  = numQuestions,
-                    onSelect = { numQuestions = it }
-                )
-                Box(
-                    modifier         = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        CircularProgressIndicator(color = BrandViolet)
-                        Spacer(Modifier.height(16.dp))
-                        Text(
-                            "Generating $numQuestions questions from your notes…",
-                            color    = TextSecondary,
-                            fontSize = 14.sp
-                        )
-                        Spacer(Modifier.height(4.dp))
-                        Text("This may take up to a minute.", fontSize = 12.sp, color = TextSecondary)
-                    }
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    CircularProgressIndicator(color = BrandViolet)
+                    Spacer(Modifier.height(16.dp))
+                    Text(
+                        "Generating $numQuestions questions from your notes…",
+                        color    = TextSecondary,
+                        fontSize = 14.sp
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text("This may take up to a minute.", fontSize = 12.sp, color = TextSecondary)
                 }
             }
             return@Scaffold
@@ -170,44 +168,65 @@ fun QuizScreen(onBack: () -> Unit, showBackButton: Boolean = true, onUploadClick
 
         // ── Error ─────────────────────────────────────────────────────────
         if (errorMessage != null) {
+            Box(
+                modifier         = Modifier.fillMaxSize().padding(padding).padding(24.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("⚠️", fontSize = 48.sp)
+                    Spacer(Modifier.height(16.dp))
+                    Text(
+                        "Could not generate quiz",
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize   = 18.sp,
+                        color      = TextPrimary
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        errorMessage ?: "",
+                        fontSize  = 13.sp,
+                        color     = TextSecondary,
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(Modifier.height(24.dp))
+                    Button(
+                        onClick = { generateQuiz() },
+                        shape   = RoundedCornerShape(12.dp),
+                        colors  = ButtonDefaults.buttonColors(containerColor = BrandViolet)
+                    ) {
+                        Icon(Icons.Default.Refresh, null, tint = Color.White)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Try Again", color = Color.White)
+                    }
+                }
+            }
+            return@Scaffold
+        }
+
+        // ── Choose a count, then generate (explicit — no auto-generation) ──
+        // Shown after a source is picked and whenever we reset to setup. This is
+        // the ONLY place a quiz is generated, via the Generate Quiz button.
+        if (questions.isEmpty()) {
             Column(
-                modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp)
+                modifier            = Modifier.fillMaxSize().padding(padding).padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(20.dp)
             ) {
                 QuestionCountPicker(
                     current  = numQuestions,
                     onSelect = { numQuestions = it }
                 )
-                Box(
-                    modifier         = Modifier.fillMaxSize().padding(top = 8.dp),
-                    contentAlignment = Alignment.Center
+                Button(
+                    onClick  = { generateQuiz() },
+                    shape    = RoundedCornerShape(14.dp),
+                    colors   = ButtonDefaults.buttonColors(containerColor = BrandViolet),
+                    modifier = Modifier.fillMaxWidth().height(52.dp)
                 ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("⚠️", fontSize = 48.sp)
-                        Spacer(Modifier.height(16.dp))
-                        Text(
-                            "Could not generate quiz",
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize   = 18.sp,
-                            color      = TextPrimary
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            errorMessage ?: "",
-                            fontSize  = 13.sp,
-                            color     = TextSecondary,
-                            textAlign = TextAlign.Center
-                        )
-                        Spacer(Modifier.height(24.dp))
-                        Button(
-                            onClick = { refreshKey++ },
-                            shape   = RoundedCornerShape(12.dp),
-                            colors  = ButtonDefaults.buttonColors(containerColor = BrandViolet)
-                        ) {
-                            Icon(Icons.Default.Refresh, null, tint = Color.White)
-                            Spacer(Modifier.width(8.dp))
-                            Text("Try Again", color = Color.White)
-                        }
-                    }
+                    Text(
+                        "Generate Quiz",
+                        fontSize   = 16.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color      = Color.White
+                    )
                 }
             }
             return@Scaffold
@@ -219,14 +238,6 @@ fun QuizScreen(onBack: () -> Unit, showBackButton: Boolean = true, onUploadClick
             contentPadding      = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-
-            item {
-                QuestionCountPicker(
-                    current  = numQuestions,
-                    onSelect = { numQuestions = it }
-                )
-            }
-
 
             // Score banner (shown after submit)
             if (showResults) {
@@ -323,7 +334,7 @@ fun QuizScreen(onBack: () -> Unit, showBackButton: Boolean = true, onUploadClick
                             Text("Try Again", color = BrandViolet, fontWeight = FontWeight.SemiBold)
                         }
                         Button(
-                            onClick  = { refreshKey++ },
+                            onClick  = { resetToSetup() },
                             shape    = RoundedCornerShape(14.dp),
                             colors   = ButtonDefaults.buttonColors(containerColor = BrandViolet),
                             modifier = Modifier.weight(1f).height(52.dp)
