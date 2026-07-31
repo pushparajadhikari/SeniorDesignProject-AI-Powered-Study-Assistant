@@ -66,7 +66,10 @@ data class FlashcardSetDetail(
  * POST /quiz-result — that's a real, common state, not missing data.
  */
 data class QuizHistoryEntry(
-    val id: String = "",
+    // Legacy rows omit "id" entirely — they were recorded before the backend issued a
+    // quiz_id, so there's no server-side quiz to open or delete. Same Gson caveat as the
+    // date fields below: a non-null type + default does not save you here.
+    val id: String? = null,
     @SerializedName("source_pdf")      val sourcePdf:      String? = null,
     // Legacy quiz-result rows (written by POST /quiz-result with no quiz_id) send
     // created_at:null and carry their date in a separate `timestamp` field instead.

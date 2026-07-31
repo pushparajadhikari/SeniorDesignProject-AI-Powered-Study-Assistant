@@ -141,10 +141,17 @@ private fun QuizHistoryList(userId: Int?, onOpen: (QuizHistoryEntry) -> Unit) {
 
     fun deleteQuiz(entry: QuizHistoryEntry) {
         val uid = userId ?: return
+        // Legacy rows carry no quiz_id, so there is no DELETE /quizzes/{uid}/{quiz_id}
+        // to call — say so instead of firing a request that can't succeed.
+        val quizId = entry.id ?: run {
+            deleteError = "This quiz was saved before quizzes could be deleted"
+            return
+        }
         val previous = entries
-        entries = entries.filterNot { it.id == entry.id }   // optimistic
+        // Filter by identity, not by id: null == null would take every legacy row with it.
+        entries = entries.filterNot { it === entry }   // optimistic
         scope.launch {
-            ApiService.deleteQuiz(uid, entry.id)
+            ApiService.deleteQuiz(uid, quizId)
                 .onFailure { err ->
                     entries     = previous                   // restore the row
                     deleteError = err.message ?: "Could not delete this quiz"
@@ -171,7 +178,10 @@ private fun QuizHistoryList(userId: Int?, onOpen: (QuizHistoryEntry) -> Unit) {
         emptyTitle   = "No quizzes taken yet",
         emptySubtitle = "Finish a quiz and it will show up here"
     ) {
-        itemsIndexed(entries, key = { _, e -> e.id }) { index, entry ->
+        // LazyColumn requires unique, non-null keys. Legacy rows all have a null id, so
+        // they'd collide with each other and crash the list — fall back to the position,
+        // which is unique by construction (real ids are "q_"-prefixed and can't clash).
+        itemsIndexed(entries, key = { index, e -> e.id ?: "legacy_$index" }) { index, entry ->
             StaggeredEntranceItem(index = index, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
                 HistoryRow(
                     title       = entry.sourcePdf ?: "All documents",
@@ -196,7 +206,14 @@ private fun QuizDetailScreen(userId: Int?, entry: QuizHistoryEntry, onBack: () -
 
     LaunchedEffect(userId, entry.id) {
         if (userId == null) { isLoading = false; errorMessage = "Please log in again"; return@LaunchedEffect }
-        ApiService.getQuizDetail(userId, entry.id)
+        // No quiz_id means the backend only ever stored this row's score — there are no
+        // questions to fetch, so surface that rather than calling with a null id.
+        val quizId = entry.id ?: run {
+            isLoading    = false
+            errorMessage = "Only the score was saved for this quiz — its questions aren't available"
+            return@LaunchedEffect
+        }
+        ApiService.getQuizDetail(userId, quizId)
             .onSuccess { detail = it; isLoading = false }
             .onFailure { errorMessage = it.message ?: "Failed to load this quiz"; isLoading = false }
     }
